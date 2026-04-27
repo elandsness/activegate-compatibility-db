@@ -37,11 +37,11 @@ This checklist outlines the progressive steps to build the ActiveGate compatibil
 
 ## 5. Storage Layer
 
-- [ ] Set up Neo4j database (local or cloud instance)
-- [ ] Implement graph population scripts from extracted NLP facts
-- [ ] Add provenance tracking (source URLs, extraction timestamps, confidence scores)
-- [ ] Handle updates/merges for new data without duplicating nodes
-- [ ] Implement basic graph queries for testing
+- [x] Set up Neo4j database (local or cloud instance)
+- [x] Implement graph population scripts from extracted NLP facts
+- [x] Add provenance tracking (source URLs, extraction timestamps, confidence scores)
+- [x] Handle updates/merges for new data without duplicating nodes
+- [x] Implement basic graph queries for testing
 
 ## 6. Reasoning Engine
 
