@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "dynatrace-mcp": {
+      "command": "npx",
+      "args": ["-y", "@dynatrace-oss/dynatrace-mcp-server@latest"],
+      "env": {
+        "DT_ENVIRONMENT": "https://kfs8009h.sprint.apps.dynatracelabs.com",
+        "DT_PLATFORM_TOKEN": "dt0s16.HE5JS5BI.EL7LS3PBJZOUFK3LYDQB66TCL3OMOBFHUKVJOY33NNN7UGUMVKOMAW6BUAPJ6SSH"
+      },
+      "type": "stdio"
+    }
+  },
+  "inputs": []
+}
