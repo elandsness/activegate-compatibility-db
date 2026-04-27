@@ -1,0 +1,14 @@
+            for link in release_links:
+                if "sprint" in link.get("href", "").lower():
+                    release_url = link["href"] if link["href"].startswith("http") else f"https://docs.dynatrace.com{link['href']}"
+                    title = link.get_text().strip()
+                    
+                    # Scrape individual release page
+                    release_content = self._scrape_release_page(release_url)
+                    
+                    releases.append({
+                        "title": title,
+                        "url": release_url,
+                        "content": release_content,
+                        "scraped_at": str(datetime.now())
+                    })
