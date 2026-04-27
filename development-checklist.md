@@ -28,12 +28,12 @@ This checklist outlines the progressive steps to build the ActiveGate compatibil
 
 ## 4. NLP Extraction Engine
 
-- [ ] Set up spaCy pipeline with pre-trained models
-- [ ] Implement entity recognition for versions, OS, extensions, and compatibility keywords
-- [ ] Develop rules/patterns for extracting compatibility statements from text
+- [x] Set up spaCy pipeline with pre-trained models
+- [x] Implement entity recognition for versions, OS, extensions, and compatibility keywords
+- [x] Develop rules/patterns for extracting compatibility statements from text
 - [ ] Integrate Hugging Face Transformers for advanced text understanding if needed
-- [ ] Normalize extracted entities to canonical forms (e.g., version parsing)
-- [ ] Validate extraction accuracy on sample release notes
+- [x] Normalize extracted entities to canonical forms (e.g., version parsing)
+- [x] Validate extraction accuracy on sample release notes
 
 ## 5. Storage Layer
 
