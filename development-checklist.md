@@ -69,11 +69,11 @@ This checklist outlines the progressive steps to build the ActiveGate compatibil
 
 ## 9. Deployment and Refinement
 
-- [ ] Dockerize the application (multi-container if needed: app + Neo4j)
-- [ ] Set up CI/CD pipeline (GitHub Actions for testing and building)
-- [ ] Deploy to internal environment (e.g., Kubernetes or VM)
-- [ ] Monitor performance and refine NLP/storage as needed
-- [ ] Document usage and troubleshooting in README.md
+- [x] Dockerize the application (multi-container if needed: app + Neo4j)
+- [x] Set up CI/CD pipeline (GitHub Actions for testing and building)
+- [x] Deploy to internal environment (e.g., Kubernetes or VM)
+- [x] Monitor performance and refine NLP/storage as needed
+- [x] Document usage and troubleshooting in README.md
 
 ## Notes
 
