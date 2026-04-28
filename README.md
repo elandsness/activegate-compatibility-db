@@ -16,7 +16,7 @@ A system for checking ActiveGate upgrade compatibility for Dynatrace Managed env
 
 ```bash
 # Clone the repository
-git clone https://github.com/dynatrace/activegate-compatibility-db.git
+git clone https://github.com/elandsness/activegate-compatibility-db.git
 cd activegate-compatibility-db
 
 # Create virtual environment
@@ -209,7 +209,7 @@ agi status
 
 ## License
 
-Copyright (c) 2024 Dynatrace. All rights reserved.
+Copyright (c) 2026 Dynatrace. All rights reserved.
 
 ## Contributing
 
