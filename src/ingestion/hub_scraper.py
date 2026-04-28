@@ -28,7 +28,8 @@ class HubExtensionsScraper:
             ext_links = soup.find_all('a', href=lambda x: x and '/hub/detail/' in x)
             
             for link in ext_links[:10]:  # Limit for testing
-                ext_url = link['href'] if link['href'].startswith('http') else f'https://www.dynatrace.com{link[\"href\"]}'
+                href = link.get('href', '')
+                ext_url = href if href.startswith('http') else f'https://www.dynatrace.com{href}'
                 name = link.get_text().strip()
                 
                 # Scrape extension page for compatibility and release notes

@@ -21,8 +21,8 @@ setup(
     long_description=read_readme(),
     long_description_content_type='text/markdown',
     author='Dynatrace Solutions Engineering',
-    author_email='solutions@dynatrace.com',
-    url='https://github.com/dynatrace/activegate-compatibility-db',
+    author_email='erik.landsness@dynatrace.com',
+    url='https://github.com/elandsness/activegate-compatibility-db',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
