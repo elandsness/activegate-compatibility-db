@@ -53,11 +53,11 @@ This checklist outlines the progressive steps to build the ActiveGate compatibil
 
 ## 7. User Interface
 
-- [ ] Build CLI prototype using Click (accept freeform queries and structured inputs)
-- [ ] Add support for uploading extension lists or config files
-- [ ] Implement output formatting (go/no-go, issues list, recommendations, citations)
+- [x] Build CLI prototype using Click (accept freeform queries and structured inputs)
+- [x] Add support for uploading extension lists or config files
+- [x] Implement output formatting (go/no-go, issues list, recommendations, citations)
 - [ ] (Optional) Develop web UI with Flask backend and React frontend
-- [ ] Test UI with sample user scenarios
+- [x] Test UI with sample user scenarios
 
 ## 8. Testing and Validation
 
