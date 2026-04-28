@@ -1,0 +1,48 @@
+# Docker ignore file
+# Exclude files not needed in Docker image
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+.eggs
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.venv
+venv/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Documentation
+*.md
+!README.md
+
+# Data and logs
+data/
+logs/
+*.log
+
+# Test files
+tests/
+test_*.py
+
+# Development files
+Makefile
+docker-compose*.yml
+Dockerfile.dev
+
+# OS
+.DS_Store
+Thumbs.db
