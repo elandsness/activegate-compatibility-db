@@ -45,11 +45,11 @@ This checklist outlines the progressive steps to build the ActiveGate compatibil
 
 ## 6. Reasoning Engine
 
-- [ ] Build rule-based matcher for compatibility queries
-- [ ] Integrate semantic search (e.g., vector embeddings) for fuzzy matching
-- [ ] Implement go/no-go logic with multi-factor checks (ActiveGate + OS + Managed + extensions)
-- [ ] Add citation generation (link back to source text/release notes)
-- [ ] Support historical queries (past version compatibility)
+- [x] Build rule-based matcher for compatibility queries
+- [x] Integrate semantic search (e.g., vector embeddings) for fuzzy matching
+- [x] Implement go/no-go logic with multi-factor checks (ActiveGate + OS + Managed + extensions)
+- [x] Add citation generation (link back to source text/release notes)
+- [x] Support historical queries (past version compatibility)
 
 ## 7. User Interface
 
