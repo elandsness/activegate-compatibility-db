@@ -10,6 +10,8 @@ FROM python:3.13-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    libxml2-dev \
+    libxslt-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
@@ -65,10 +67,14 @@ CMD ["python", "-m", "src.cli.main", "--help"]
 # ============================================
 FROM python:3.13-slim AS development
 
-# Install development dependencies
+# Install development dependencies including build tools for Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     vim \
+    gcc \
+    libpq-dev \
+    libxml2-dev \
+    libxslt-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
