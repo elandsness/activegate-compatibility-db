@@ -30,12 +30,12 @@ ENV/
 !README.md
 
 # Data and logs
-data/
+# data/  # Uncomment to include data directory
 logs/
 *.log
 
 # Test files
-tests/
+# tests/  # Uncomment to include tests directory
 test_*.py
 
 # Development files
