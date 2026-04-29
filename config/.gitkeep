@@ -1,0 +1,5 @@
+# Configuration directory for ActiveGate Compatibility Intelligence
+# 
+# Files:
+#   - neo4j.conf: Neo4j connection settings (create from template)
+#   - app.yaml: Application configuration
