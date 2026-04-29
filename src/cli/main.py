@@ -18,6 +18,7 @@ sys.path.insert(0, str(project_root))
 from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.reasoning.citation_generator import QueryProcessor
 from src.nlp.nlp_pipeline import NLPPipeline, FactConverter
+from src.storage.graph_visualizer import GraphVisualizer
 
 
 # Initialize components
@@ -199,6 +200,47 @@ def status():
     click.echo("Supported OS families:")
     click.echo("  - Windows (2016, 2019, 2022)")
     click.echo("  - Linux (RHEL 7.x, 8.x, 9.x, CentOS 7.x, 8.x, Ubuntu 20.04, 22.04)")
+
+
+@cli.command()
+@click.option('--versions', '-v', default=None, help='Comma-separated list of ActiveGate versions to visualize (e.g., "1.330,1.335")')
+@click.option('--format', '-f', 'output_format', default='mermaid', type=click.Choice(['mermaid', 'flowchart', 'text']), help='Output format')
+@click.option('--limit', '-l', default=50, help='Maximum number of versions to include')
+def visualize(versions, output_format, limit):
+    """Visualize the ActiveGate compatibility graph.
+    
+    This command queries the Neo4j graph database and generates a visualization
+    showing the relationships between ActiveGate versions, Managed clusters,
+    OS versions, and extensions.
+    
+    Examples:
+        agi visualize
+        agi visualize --format text
+        agi visualize -v 1.330,1.335 -f mermaid
+    """
+    # Parse versions if provided
+    version_list = None
+    if versions:
+        version_list = [v.strip() for v in versions.split(',')]
+    
+    try:
+        visualizer = GraphVisualizer()
+        data = visualizer.get_graph_data(activegate_versions=version_list, limit=limit)
+        
+        if output_format == 'mermaid':
+            output = visualizer.to_mermaid(data)
+        elif output_format == 'flowchart':
+            output = visualizer.to_mermaid_flowchart(data)
+        elif output_format == 'text':
+            output = visualizer.to_text_diagram(data)
+        
+        click.echo(output)
+        
+    except Exception as e:
+        click.echo(f"Error generating visualization: {e}")
+        click.echo("")
+        click.echo("Make sure Neo4j is running and environment variables are set:")
+        click.echo("  NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE")
 
 
 # Create a template config file
