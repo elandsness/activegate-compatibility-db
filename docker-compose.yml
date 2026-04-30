@@ -18,7 +18,7 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:7474 || exit 1"]
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:7474 || exit 1']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -28,6 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     container_name: agi-app
     ports:
       - '5000:5000'
@@ -49,6 +50,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     container_name: agi-cli
     environment:
       - NEO4J_URI=bolt://neo4j:7687
@@ -59,13 +61,14 @@ services:
       - ./config:/app/config
     profiles:
       - cli
-    command: ['python', '-m', 'src.cli.main', '--help']
+    command: ['python', '-m', 'src.cli.main']
 
   # Scheduler (for weekly data refresh)
   scheduler:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     container_name: agi-scheduler
     environment:
       - NEO4J_URI=bolt://neo4j:7687
