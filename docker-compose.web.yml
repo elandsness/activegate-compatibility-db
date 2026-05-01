@@ -14,9 +14,9 @@ services:
       - neo4j_data:/data
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:7474 || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   api:
     build:
@@ -28,6 +28,7 @@ services:
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=password
       - PORT=5000
+      - FLASK_DEBUG=0
     ports:
       - '5000:5000'
     volumes:
@@ -35,7 +36,7 @@ services:
       - ./config:/app/config
     depends_on:
       neo4j:
-        condition: service_started
+        condition: service_healthy
     command: ['python', '-m', 'src.api.app']
 
   web:
