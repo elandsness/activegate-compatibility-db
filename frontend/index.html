@@ -224,8 +224,8 @@
     <script type="text/babel">
       const { useState, useEffect, useRef } = React;
 
-      const API_URL =
-        process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      // Use relative URL to go through Nginx proxy
+      const API_URL = '/api';
 
       function App() {
         const [activeTab, setActiveTab] = useState('chat');
