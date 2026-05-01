@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ActiveGate Compatibility Intelligence</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        min-height: 100vh;
+      }
+      .app {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        text-align: center;
+        padding: 30px 0;
+        border-bottom: 1px solid #333;
+        margin-bottom: 30px;
+      }
+      .header h1 {
+        font-size: 2rem;
+        color: #00d4ff;
+        margin-bottom: 10px;
+      }
+      .header p {
+        color: #888;
+      }
+      .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .tab {
+        padding: 12px 24px;
+        background: #2a2a4a;
+        border: none;
+        border-radius: 8px;
+        color: #aaa;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s;
+      }
+      .tab.active {
+        background: #00d4ff;
+        color: #1a1a2e;
+      }
+      .tab:hover:not(.active) {
+        background: #3a3a5a;
+      }
+      .chat-container {
+        background: #2a2a4a;
+        border-radius: 12px;
+        padding: 20px;
+        height: 500px;
+        display: flex;
+        flex-direction: column;
+      }
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+      }
+      .message {
+        margin-bottom: 15px;
+        padding: 15px;
+        border-radius: 10px;
+        max-width: 80%;
+      }
+      .message.user {
+        background: #00d4ff;
+        color: #1a1a2e;
+        margin-left: auto;
+      }
+      .message.bot {
+        background: #3a3a5a;
+      }
+      .message .version-info {
+        font-size: 0.85rem;
+        opacity: 0.8;
+        margin-top: 5px;
+      }
+      .input-container {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+      }
+      .input-container input {
+        flex: 1;
+        padding: 15px;
+        border: none;
+        border-radius: 8px;
+        background: #1a1a2e;
+        color: #eee;
+        font-size: 1rem;
+      }
+      .input-container input:focus {
+        outline: 2px solid #00d4ff;
+      }
+      .input-container button {
+        padding: 15px 30px;
+        background: #00d4ff;
+        border: none;
+        border-radius: 8px;
+        color: #1a1a2e;
+        font-size: 1rem;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .input-container button:hover {
+        background: #00b8e6;
+      }
+      .input-container button:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+      .data-container {
+        background: #2a2a4a;
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .stat-card {
+        background: #3a3a5a;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .stat-card h3 {
+        font-size: 2rem;
+        color: #00d4ff;
+      }
+      .stat-card p {
+        color: #888;
+        margin-top: 5px;
+      }
+      .data-list {
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      .data-item {
+        background: #3a3a5a;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .status-badge {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+      }
+      .status-badge.go {
+        background: #22c55e;
+        color: #fff;
+      }
+      .status-badge.no-go {
+        background: #ef4444;
+        color: #fff;
+      }
+      .status-badge.caution {
+        background: #f59e0b;
+        color: #fff;
+      }
+      .ingest-form {
+        background: #3a3a5a;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      .ingest-form textarea {
+        width: 100%;
+        height: 150px;
+        padding: 15px;
+        border: none;
+        border-radius: 8px;
+        background: #1a1a2e;
+        color: #eee;
+        font-size: 1rem;
+        margin: 10px 0;
+        resize: vertical;
+      }
+      .ingest-form button {
+        padding: 12px 24px;
+        background: #00d4ff;
+        border: none;
+        border-radius: 8px;
+        color: #1a1a2e;
+        font-size: 1rem;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .loading {
+        text-align: center;
+        padding: 20px;
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      const API_URL =
+        process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+      function App() {
+        const [activeTab, setActiveTab] = useState('chat');
+        const [versions, setVersions] = useState([]);
+        const [relationships, setRelationships] = useState([]);
+
+        useEffect(() => {
+          fetchData();
+        }, []);
+
+        const fetchData = async () => {
+          try {
+            const vRes = await fetch(`${API_URL}/data/versions`);
+            const vData = await vRes.json();
+            setVersions(vData.versions || []);
+
+            const rRes = await fetch(`${API_URL}/data/relationships`);
+            const rData = await rRes.json();
+            setRelationships(rData.relationships || []);
+          } catch (e) {
+            console.error('Failed to fetch data:', e);
+          }
+        };
+
+        return (
+          <div className="app">
+            <div className="header">
+              <h1>🔧 ActiveGate Compatibility Intelligence</h1>
+              <p>
+                Check upgrade compatibility between Dynatrace ActiveGate
+                versions
+              </p>
+            </div>
+
+            <div className="tabs">
+              <button
+                className={`tab ${activeTab === 'chat' ? 'active' : ''}`}
+                onClick={() => setActiveTab('chat')}
+              >
+                💬 Chat
+              </button>
+              <button
+                className={`tab ${activeTab === 'data' ? 'active' : ''}`}
+                onClick={() => setActiveTab('data')}
+              >
+                📊 Data
+              </button>
+              <button
+                className={`tab ${activeTab === 'ingest' ? 'active' : ''}`}
+                onClick={() => setActiveTab('ingest')}
+              >
+                📥 Ingest
+              </button>
+            </div>
+
+            {activeTab === 'chat' && <ChatTab />}
+            {activeTab === 'data' && (
+              <DataTab versions={versions} relationships={relationships} />
+            )}
+            {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
+          </div>
+        );
+      }
+
+      function ChatTab() {
+        const [messages, setMessages] = useState([
+          {
+            text: 'Hello! I can help you check ActiveGate upgrade compatibility. Ask me something like "Can I upgrade from 1.330 to 1.335?"',
+            user: false,
+          },
+        ]);
+        const [input, setInput] = useState('');
+        const [loading, setLoading] = useState(false);
+        const messagesEndRef = useRef(null);
+
+        const scrollToBottom = () => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        };
+
+        useEffect(scrollToBottom, [messages]);
+
+        const sendMessage = async () => {
+          if (!input.trim() || loading) return;
+
+          const userMessage = input.trim();
+          setMessages((prev) => [...prev, { text: userMessage, user: true }]);
+          setInput('');
+          setLoading(true);
+
+          try {
+            const response = await fetch(`${API_URL}/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: userMessage }),
+            });
+            const data = await response.json();
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                text: data.response,
+                user: false,
+                status: data.status,
+                versions: data.versions_detected,
+              },
+            ]);
+          } catch (e) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                text: 'Sorry, I encountered an error. Make sure the API is running.',
+                user: false,
+              },
+            ]);
+          }
+
+          setLoading(false);
+        };
+
+        const handleKeyPress = (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        };
+
+        return (
+          <div className="chat-container">
+            <div className="messages">
+              {messages.map((msg, i) => (
+                <div key={i} className={`message ${msg.user ? 'user' : 'bot'}`}>
+                  {msg.text}
+                  {msg.versions && (
+                    <div className="version-info">
+                      Detected: {msg.versions.current} → {msg.versions.target}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {loading && <div className="loading">Thinking...</div>}
+              <div ref={messagesEndRef} />
+            </div>
+            <div className="input-container">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Ask about upgrade compatibility..."
+                disabled={loading}
+              />
+              <button onClick={sendMessage} disabled={loading || !input.trim()}>
+                Send
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      function DataTab({ versions, relationships }) {
+        return (
+          <div className="data-container">
+            <div className="stats-grid">
+              <div className="stat-card">
+                <h3>{versions.length}</h3>
+                <p>ActiveGate Versions</p>
+              </div>
+              <div className="stat-card">
+                <h3>{relationships.reduce((sum, r) => sum + r.count, 0)}</h3>
+                <p>Total Relationships</p>
+              </div>
+            </div>
+
+            <h3 style={{ marginBottom: '15px' }}>ActiveGate Versions</h3>
+            <div className="data-list">
+              {versions.length === 0 ? (
+                <p style={{ color: '#888' }}>
+                  No versions found. Ingest some data first.
+                </p>
+              ) : (
+                versions.map((v, i) => (
+                  <div key={i} className="data-item">
+                    <span>{v}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <h3 style={{ marginTop: '30px', marginBottom: '15px' }}>
+              Relationship Types
+            </h3>
+            <div className="data-list">
+              {relationships.map((r, i) => (
+                <div key={i} className="data-item">
+                  <span>{r.type}</span>
+                  <span className="status-badge go">{r.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      function IngestTab({ onDataChange }) {
+        const [text, setText] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [result, setResult] = useState(null);
+
+        const handleIngest = async () => {
+          if (!text.trim() || loading) return;
+
+          setLoading(true);
+          try {
+            const response = await fetch(`${API_URL}/ingest`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: text }),
+            });
+            const data = await response.json();
+            setResult(data);
+            onDataChange();
+          } catch (e) {
+            setResult({ error: 'Failed to ingest data' });
+          }
+          setLoading(false);
+        };
+
+        return (
+          <div className="data-container">
+            <div className="ingest-form">
+              <h3>📥 Ingest Release Notes</h3>
+              <p style={{ color: '#888', marginTop: '5px' }}>
+                Paste release note text or compatibility statements to extract
+                data.
+              </p>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Paste release notes here... e.g., 'ActiveGate 1.335 requires Managed cluster 1.335 or higher...'"
+              />
+              <button onClick={handleIngest} disabled={loading || !text.trim()}>
+                {loading ? 'Ingesting...' : 'Ingest Data'}
+              </button>
+            </div>
+
+            {result && (
+              <div className="data-list">
+                {result.error ? (
+                  <div className="data-item" style={{ color: '#ef4444' }}>
+                    {result.error}
+                  </div>
+                ) : (
+                  <>
+                    <div className="data-item">
+                      <span>Facts Extracted</span>
+                      <span className="status-badge go">
+                        {result.facts_extracted}
+                      </span>
+                    </div>
+                    <div className="data-item">
+                      <span>Versions Found</span>
+                      <span className="status-badge go">
+                        {result.versions_found}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
