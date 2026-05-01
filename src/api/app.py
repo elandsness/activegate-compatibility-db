@@ -19,6 +19,25 @@ app = Flask(__name__)
 CORS(app)
 
 
+@app.route('/')
+def index():
+    """Root endpoint with API info."""
+    return jsonify({
+        'service': 'ActiveGate Compatibility API',
+        'version': '1.0.0',
+        'endpoints': {
+            'health': '/api/health',
+            'chat': '/api/chat (POST)',
+            'check': '/api/check (POST)',
+            'ingest': '/api/ingest (POST)',
+            'versions': '/api/data/versions',
+            'relationships': '/api/data/relationships',
+            'visualize': '/api/visualize'
+        },
+        'web_ui': 'Port 3000'
+    })
+
+
 def get_graph_connection():
     """Get Neo4j connection from environment variables."""
     return GraphConnection(
