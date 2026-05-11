@@ -157,34 +157,94 @@ def check_compatibility():
 @app.route('/api/ingest', methods=['POST'])
 def ingest_data():
     """
-    Ingest data from URL or text.
-    Accepts: {"url": "...", "text": "..."}
-    Returns: {"status": "success", "facts_extracted": N}
+    Ingest data from various sources.
+    Accepts: {"source": "releases|hub|eos|url", "url": "..."}
+    Returns: {"status": "success", "items_scraped": N, "facts_extracted": N}
     """
     data = request.get_json()
-    url = data.get('url')
-    text = data.get('text')
+    source = data.get('source', 'url')
     
-    if not text and not url:
-        return jsonify({'error': 'Either url or text required'}), 400
+    items_scraped = 0
+    facts_extracted = 0
     
-    if text:
-        # Process text directly
-        result = nlp_pipeline.process_document(
-            text=text,
-            source_url=url or '',
-            source_title=data.get('title', 'Manual Input')
-        )
-    else:
-        # TODO: Implement URL fetching
-        return jsonify({'error': 'URL ingestion not yet implemented'}), 501
-    
-    return jsonify({
-        'status': 'success',
-        'facts_extracted': len(result.compatibility_statements),
-        'versions_found': len(result.entities.get('versions', [])),
-        'statements_found': len(result.compatibility_statements)
-    })
+    try:
+        if source == 'releases':
+            # Scrape release notes from Dynatrace docs
+            from src.ingestion.scraper import ReleaseNotesScraper
+            scraper = ReleaseNotesScraper()
+            releases = scraper.scrape_release_notes()
+            items_scraped = len(releases)
+            
+            # Process each release through NLP pipeline
+            for release in releases:
+                result = nlp_pipeline.process_document(
+                    text=release.get('content', ''),
+                    source_url=release.get('url', ''),
+                    source_title=release.get('title', 'Release Notes')
+                )
+                facts_extracted += len(result.compatibility_statements)
+                
+        elif source == 'hub':
+            # Scrape extensions from Dynatrace Hub
+            from src.ingestion.hub_scraper import HubExtensionsScraper
+            scraper = HubExtensionsScraper()
+            extensions = scraper.scrape_extensions()
+            items_scraped = len(extensions)
+            
+            for ext in extensions:
+                result = nlp_pipeline.process_document(
+                    text=str(ext.get('data', {})),
+                    source_url=ext.get('url', ''),
+                    source_title=ext.get('name', 'Extension')
+                )
+                facts_extracted += len(result.compatibility_statements)
+                
+        elif source == 'eos':
+            # Scrape end-of-support announcements
+            from src.ingestion.eos_scraper import EOSScraper
+            scraper = EOSScraper()
+            eos_announcements = scraper.scrape_eos_announcements()
+            items_scraped = len(eos_announcements)
+            
+            for eos in eos_announcements:
+                result = nlp_pipeline.process_document(
+                    text=eos.get('content', ''),
+                    source_url=eos.get('url', ''),
+                    source_title=eos.get('title', 'EOS Announcement')
+                )
+                facts_extracted += len(result.compatibility_statements)
+                
+        elif source == 'url':
+            # Scrape a specific URL
+            url = data.get('url')
+            if not url:
+                return jsonify({'error': 'URL required for url source'}), 400
+            
+            import requests
+            response = requests.get(url)
+            text = response.text
+            
+            result = nlp_pipeline.process_document(
+                text=text,
+                source_url=url,
+                source_title=data.get('title', 'Web Page')
+            )
+            items_scraped = 1
+            facts_extracted = len(result.compatibility_statements)
+            
+        else:
+            return jsonify({'error': f'Unknown source: {source}. Use: releases, hub, eos, url'}), 400
+        
+        return jsonify({
+            'status': 'success',
+            'source': source,
+            'items_scraped': items_scraped,
+            'facts_extracted': facts_extracted
+        })
+        
+    except Exception as e:
+        logger.error(f"Ingest error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/data/versions', methods=['GET'])

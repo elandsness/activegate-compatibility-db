@@ -228,7 +228,7 @@
       const API_URL = '/api';
 
       function App() {
-        const [activeTab, setActiveTab] = useState('chat');
+        const [activeTab, setActiveTab] = useState('ingest');
         const [versions, setVersions] = useState([]);
         const [relationships, setRelationships] = useState([]);
 
@@ -262,6 +262,12 @@
 
             <div className="tabs">
               <button
+                className={`tab ${activeTab === 'ingest' ? 'active' : ''}`}
+                onClick={() => setActiveTab('ingest')}
+              >
+                📥 Ingest Data
+              </button>
+              <button
                 className={`tab ${activeTab === 'chat' ? 'active' : ''}`}
                 onClick={() => setActiveTab('chat')}
               >
@@ -273,19 +279,13 @@
               >
                 📊 Data
               </button>
-              <button
-                className={`tab ${activeTab === 'ingest' ? 'active' : ''}`}
-                onClick={() => setActiveTab('ingest')}
-              >
-                📥 Ingest
-              </button>
             </div>
 
+            {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
             {activeTab === 'chat' && <ChatTab />}
             {activeTab === 'data' && (
               <DataTab versions={versions} relationships={relationships} />
             )}
-            {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
           </div>
         );
       }
@@ -430,68 +430,201 @@
       }
 
       function IngestTab({ onDataChange }) {
-        const [text, setText] = useState('');
+        const [source, setSource] = useState(null);
+        const [url, setUrl] = useState('');
         const [loading, setLoading] = useState(false);
         const [result, setResult] = useState(null);
 
+        const sources = [
+          {
+            id: 'releases',
+            label: 'Releases',
+            emoji: '📄',
+            description: 'Dynatrace release notes',
+          },
+          {
+            id: 'hub',
+            label: 'Hub',
+            emoji: '🔌',
+            description: 'Extensions & compatibility',
+          },
+          {
+            id: 'eos',
+            label: 'EOS',
+            emoji: '⏰',
+            description: 'End-of-support announcements',
+          },
+          {
+            id: 'url',
+            label: 'Custom URL',
+            emoji: '🌐',
+            description: 'Scrape any URL',
+          },
+        ];
+
         const handleIngest = async () => {
-          if (!text.trim() || loading) return;
+          if (!source || loading) return;
+          if (source === 'url' && !url.trim()) return;
 
           setLoading(true);
           try {
+            const payload = { source };
+            if (source === 'url') {
+              payload.url = url;
+            }
+
             const response = await fetch(`${API_URL}/ingest`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: text }),
+              body: JSON.stringify(payload),
             });
             const data = await response.json();
             setResult(data);
             onDataChange();
           } catch (e) {
-            setResult({ error: 'Failed to ingest data' });
+            setResult({ error: String(e) });
           }
           setLoading(false);
         };
 
         return (
           <div className="data-container">
-            <div className="ingest-form">
-              <h3>📥 Ingest Release Notes</h3>
-              <p style={{ color: '#888', marginTop: '5px' }}>
-                Paste release note text or compatibility statements to extract
-                data.
-              </p>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste release notes here... e.g., 'ActiveGate 1.335 requires Managed cluster 1.335 or higher...'"
-              />
-              <button onClick={handleIngest} disabled={loading || !text.trim()}>
-                {loading ? 'Ingesting...' : 'Ingest Data'}
-              </button>
+            <h3 style={{ marginBottom: '20px' }}>📥 Data Sources</h3>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                gap: '12px',
+                marginBottom: '20px',
+              }}
+            >
+              {sources.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setSource(s.id);
+                    setResult(null);
+                  }}
+                  disabled={loading}
+                  style={{
+                    padding: '15px 10px',
+                    background: source === s.id ? '#00d4ff' : '#3a3a5a',
+                    border: source === s.id ? '2px solid #00d4ff' : 'none',
+                    borderRadius: '8px',
+                    color: source === s.id ? '#1a1a2e' : '#eee',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    textAlign: 'center',
+                    fontSize: '0.95rem',
+                    fontWeight: source === s.id ? 'bold' : 'normal',
+                    transition: 'all 0.2s',
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                >
+                  <div>{s.emoji}</div>
+                  <div style={{ fontSize: '0.85rem', marginTop: '5px' }}>
+                    {s.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      opacity: 0.7,
+                      marginTop: '3px',
+                    }}
+                  >
+                    {s.description}
+                  </div>
+                </button>
+              ))}
             </div>
 
+            {source === 'url' && (
+              <div style={{ marginBottom: '15px' }}>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://example.com..."
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#1a1a2e',
+                    border: '1px solid #3a3a5a',
+                    borderRadius: '8px',
+                    color: '#eee',
+                    fontSize: '0.95rem',
+                  }}
+                />
+              </div>
+            )}
+
+            {source && (
+              <button
+                onClick={handleIngest}
+                disabled={loading || (source === 'url' && !url.trim())}
+                style={{
+                  padding: '12px 30px',
+                  background: '#00d4ff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#1a1a2e',
+                  fontSize: '1rem',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                  opacity:
+                    loading || (source === 'url' && !url.trim()) ? 0.5 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {loading ? '⏳ Ingesting...' : '✓ Start Ingestion'}
+              </button>
+            )}
+
             {result && (
-              <div className="data-list">
+              <div style={{ marginTop: '20px' }}>
                 {result.error ? (
-                  <div className="data-item" style={{ color: '#ef4444' }}>
-                    {result.error}
+                  <div
+                    style={{
+                      background: '#3a3a5a',
+                      border: '1px solid #ef4444',
+                      color: '#ef4444',
+                      padding: '15px',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    ❌ Error: {result.error}
                   </div>
                 ) : (
-                  <>
-                    <div className="data-item">
-                      <span>Facts Extracted</span>
-                      <span className="status-badge go">
-                        {result.facts_extracted}
-                      </span>
+                  <div
+                    style={{
+                      background: '#3a3a5a',
+                      border: '1px solid #22c55e',
+                      color: '#22c55e',
+                      padding: '15px',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <div>✓ Ingestion successful!</div>
+                    <div
+                      style={{
+                        fontSize: '0.9rem',
+                        marginTop: '8px',
+                        color: '#eee',
+                      }}
+                    >
+                      <div>
+                        Source: <strong>{result.source}</strong>
+                      </div>
+                      <div>
+                        Items scraped: <strong>{result.items_scraped}</strong>
+                      </div>
+                      <div>
+                        Facts extracted:{' '}
+                        <strong>{result.facts_extracted}</strong>
+                      </div>
                     </div>
-                    <div className="data-item">
-                      <span>Versions Found</span>
-                      <span className="status-badge go">
-                        {result.versions_found}
-                      </span>
-                    </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
