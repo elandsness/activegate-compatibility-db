@@ -225,6 +225,8 @@ def ingest_data():
             return jsonify({'error': f'Unknown source: {source}. Use: releases, hub, eos, url'}), 400
 
         facts_extracted = 0
+        processed_docs = []
+        
         for doc in documents:
             content = doc.get('content', '')
             logger.info(f"Processing document '{doc.get('title', 'Unknown')}' with {len(content)} chars")
@@ -242,6 +244,24 @@ def ingest_data():
             facts = FactConverter.convert_to_facts(result)
             graph_populator.populate_from_facts(facts)
             logger.info(f"Stored {len(facts)} facts in graph")
+            
+            processed_docs.append({
+                'title': doc.get('title', 'Unknown'),
+                'url': doc.get('url', ''),
+                'content_length': len(content),
+                'facts_extracted': doc_facts,
+                'facts_stored': len(facts),
+                'compatibility_statements': len(result.compatibility_statements),
+                'version_pairs': len(result.version_pairs)
+            })
+
+        return jsonify({
+            'status': 'success',
+            'source': source,
+            'items_scraped': items_scraped,
+            'facts_extracted': facts_extracted,
+            'documents': processed_docs
+        })
 
         return jsonify({
             'status': 'success',
