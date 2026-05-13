@@ -19,6 +19,8 @@ class GraphPopulator:
             graph_conn: GraphConnection instance
         """
         self.graph_conn = graph_conn
+        if not self.graph_conn.connect():
+            logger.error("GraphPopulator could not connect to Neo4j during initialization")
     
     def populate_from_facts(self, facts: List[ExtractedFact]) -> int:
         """
@@ -31,12 +33,11 @@ class GraphPopulator:
             Count of facts inserted
         """
         # Ensure connection is established
-        try:
-            self.graph_conn.connect()
-        except Exception as e:
-            logger.error(f"Failed to connect to Neo4j: {e}")
+        connected = self.graph_conn.connect()
+        if not connected:
+            logger.error("Failed to connect to Neo4j: cannot insert facts")
             return 0
-            
+
         inserted = 0
         for fact in facts:
             try:

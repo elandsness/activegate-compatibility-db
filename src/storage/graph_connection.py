@@ -31,11 +31,10 @@ class GraphConnection:
         try:
             self.driver = GraphDatabase.driver(
                 self.uri,
-                auth=(self.user, self.password),
-                database=self.database
+                auth=(self.user, self.password)
             )
-            # Test the connection
-            with self.driver.session() as session:
+            # Test the connection with the configured database
+            with self.driver.session(database=self.database) as session:
                 session.run("RETURN 1")
             logger.info(f"Successfully connected to Neo4j at {self.uri}")
             return True
@@ -55,7 +54,7 @@ class GraphConnection:
         if not self.driver:
             raise RuntimeError("Not connected to Neo4j. Call connect() first.")
         
-        session = self.driver.session()
+        session = self.driver.session(database=self.database)
         try:
             yield session
         finally:
