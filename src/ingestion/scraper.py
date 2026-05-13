@@ -75,25 +75,38 @@ class ReleaseNotesScraper:
         """Determine if a link points to a release notes page."""
         if not href:
             return False
-            
-        href_lower = href.lower()
-        text_lower = (text or '').lower()
-        
-        # Must contain some version-like pattern
+
+        href_lower = href.lower().strip()
+        text_lower = (text or '').lower().strip()
+
+        # Exclude fragment-only anchors, JavaScript, mailto, and current-page references
+        if href_lower.startswith('#') or href_lower.startswith('javascript:') or href_lower.startswith('mailto:'):
+            return False
+        if '#' in href_lower and href_lower.count('#') == 1 and href_lower.split('#')[0].strip() == '':
+            return False
+
+        # Require actual release note or whats-new paths, not footnote anchors.
+        if '/managed/whats-new/' not in href_lower and 'release-notes' not in href_lower:
+            return False
+        if href_lower.endswith('/managed/whats-new') or href_lower.endswith('/whats-new'):
+            return False
+
         import re
         version_pattern = r'\b\d+\.\d+'  # Like 1.234
-        
-        # Check various indicators
+
+        # Only accept paths that look like real release or category pages
         indicators = [
             'release-notes' in href_lower,
-            'whats-new' in href_lower,
-            'dynatrace-managed' in href_lower,
+            '/managed/whats-new/' in href_lower,
             re.search(version_pattern, href_lower),
             re.search(version_pattern, text_lower),
             'version' in text_lower,
-            any(char.isdigit() for char in href.split('/')[-1])  # Numbers in URL segment
         ]
-        
+
+        # Reject common page anchors that still pass due to numeric IDs
+        if '#fn-' in href_lower or '#toc' in href_lower or 'footnote' in href_lower:
+            return False
+
         return any(indicators)
 
     def _scrape_release_page(self, url: str) -> str:
