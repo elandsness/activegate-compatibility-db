@@ -311,6 +311,19 @@ def get_relationships():
         return jsonify({'error': str(e), 'relationships': []}), 500
 
 
+@app.route('/api/admin/clear-graph', methods=['POST'])
+def clear_graph():
+    """Clear all Neo4j graph data. Use for resetting ingestion state."""
+    try:
+        graph_conn = get_graph_connection()
+        graph_conn.connect()
+        graph_conn.clear_database()
+        graph_conn.disconnect()
+        return jsonify({'status': 'success', 'message': 'Neo4j graph cleared'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/visualize', methods=['GET'])
 def visualize():
     """Get graph visualization data."""
