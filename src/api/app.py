@@ -178,6 +178,7 @@ def ingest_data():
             releases = scraper.scrape_release_notes()
             items_scraped = len(releases)
             documents = releases
+            logger.info(f"Release scraper found {len(releases)} documents")
 
         elif source == 'hub':
             from src.ingestion.hub_scraper import HubExtensionsScraper
@@ -192,6 +193,7 @@ def ingest_data():
                 }
                 for ext in extensions
             ]
+            logger.info(f"Hub scraper found {len(extensions)} extensions")
 
         elif source == 'eos':
             from src.ingestion.eos_scraper import EndOfSupportScraper
@@ -199,6 +201,7 @@ def ingest_data():
             announcements = scraper.scrape_end_of_support()
             items_scraped = len(announcements)
             documents = announcements
+            logger.info(f"EOS scraper found {len(announcements)} announcements")
 
         elif source == 'url':
             url = data.get('url')
@@ -216,22 +219,29 @@ def ingest_data():
                 }
             ]
             items_scraped = 1
+            logger.info(f"URL scraper processed {url}")
 
         else:
             return jsonify({'error': f'Unknown source: {source}. Use: releases, hub, eos, url'}), 400
 
         facts_extracted = 0
         for doc in documents:
+            content = doc.get('content', '')
+            logger.info(f"Processing document '{doc.get('title', 'Unknown')}' with {len(content)} chars")
+            
             result = nlp_pipeline.process_document(
-                text=doc.get('content', ''),
+                text=content,
                 source_url=doc.get('url', ''),
                 source_title=doc.get('title', 'Document')
             )
-            facts_extracted += len(result.compatibility_statements)
+            doc_facts = len(result.compatibility_statements)
+            facts_extracted += doc_facts
+            logger.info(f"Extracted {doc_facts} facts from document")
             
             # Convert to facts and store in graph
             facts = FactConverter.convert_to_facts(result)
             graph_populator.populate_from_facts(facts)
+            logger.info(f"Stored {len(facts)} facts in graph")
 
         return jsonify({
             'status': 'success',
