@@ -71,7 +71,7 @@ class ReleaseNotesScraper:
             logger.info(f"Found {len(release_candidates)} ActiveGate sprint release links")
             
             releases = []
-            for candidate in release_candidates[:10]:
+            for candidate in release_candidates:
                 logger.info(f"Scraping ActiveGate release page: {candidate['url']}")
                 release_content = self._scrape_release_page(candidate['url'])
                 release_version = self._extract_release_version(candidate['url'], release_content)

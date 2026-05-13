@@ -174,11 +174,24 @@ def ingest_data():
 
         if source == 'releases':
             from src.ingestion.scraper import ReleaseNotesScraper
+            import re
+
+            def _extract_version_from_url(url: str) -> str:
+                match = re.search(r'sprint-(\d+)', url, re.IGNORECASE)
+                return f"1.{match.group(1)}" if match else ''
+
             scraper = ReleaseNotesScraper()
             releases = scraper.scrape_release_notes()
             items_scraped = len(releases)
             documents = releases
             logger.info(f"Release scraper found {len(releases)} documents")
+
+            # Ensure every scraped release exists as a graph node before NLP extraction.
+            for release in releases:
+                version = release.get('version') or _extract_version_from_url(release.get('url', ''))
+                title = release.get('title') or f"ActiveGate {version}"
+                if version:
+                    graph_populator.ensure_activegate_release_node(version, title, release.get('url', ''))
 
         elif source == 'hub':
             from src.ingestion.hub_scraper import HubExtensionsScraper
