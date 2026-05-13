@@ -30,6 +30,13 @@ class GraphPopulator:
         Returns:
             Count of facts inserted
         """
+        # Ensure connection is established
+        try:
+            self.graph_conn.connect()
+        except Exception as e:
+            logger.error(f"Failed to connect to Neo4j: {e}")
+            return 0
+            
         inserted = 0
         for fact in facts:
             try:
