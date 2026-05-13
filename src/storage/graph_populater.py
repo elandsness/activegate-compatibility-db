@@ -49,6 +49,30 @@ class GraphPopulator:
         logger.info(f"Inserted {inserted} facts into graph")
         return inserted
     
+    def ensure_activegate_release_node(self, version: str, title: str, source_url: str) -> bool:
+        """Ensure an ActiveGate release node exists in Neo4j."""
+        if not self.graph_conn.connect():
+            logger.error("Failed to connect to Neo4j: cannot ensure release node")
+            return False
+
+        query = """
+        MERGE (ag:ActiveGateVersion {version: $version})
+        SET ag.title = $title,
+            ag.source_url = $source_url,
+            ag.last_seen = datetime()
+        RETURN ag
+        """
+        try:
+            result = self.graph_conn.execute(query, {
+                'version': version,
+                'title': title,
+                'source_url': source_url
+            })
+            return result is not None
+        except Exception as e:
+            logger.error(f"Error ensuring ActiveGate release node: {e}")
+            return False
+    
     def insert_fact(self, fact: ExtractedFact) -> bool:
         """Insert a single fact into the graph."""
         try:
