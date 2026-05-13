@@ -23,28 +23,11 @@ class HubExtensionsScraper:
             soup = BeautifulSoup(response.content, 'lxml')
             
             extensions = []
-            # Look for extension cards - Dynatrace Hub uses specific classes
-            extension_cards = soup.find_all('div', class_=lambda x: x and ('extension' in x.lower() or 'card' in x.lower()))
-            
-            # If no cards found, try looking for links to extension pages
-            if not extension_cards:
-                extension_cards = soup.find_all('a', href=lambda x: x and '/hub/detail/' in x)
-            
-            for card in extension_cards[:10]:  # Limit for testing
-                if card.name == 'a':
-                    # It's a link
-                    href = card.get('href')
-                    ext_url = href if href.startswith('http') else f'https://www.dynatrace.com{href}'
-                    name = card.get_text().strip()
-                else:
-                    # It's a div - look for link inside
-                    link = card.find('a', href=lambda x: x and '/hub/detail/' in x)
-                    if link:
-                        href = link.get('href')
-                        ext_url = href if href.startswith('http') else f'https://www.dynatrace.com{href}'
-                        name = link.get_text().strip() or card.find('h3').get_text().strip() if card.find('h3') else 'Unknown Extension'
-                    else:
-                        continue
+            extension_links = soup.select('a[href*="/hub/detail/"]')
+            for link in extension_links[:10]:
+                href = link.get('href')
+                ext_url = href if href.startswith('http') else f'https://www.dynatrace.com{href}'
+                name = link.get_text().strip() or link.get('title', '').strip() or 'Unknown Extension'
                 
                 # Scrape extension page for compatibility and release notes
                 ext_data = self._scrape_extension_page(ext_url)
