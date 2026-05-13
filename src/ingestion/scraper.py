@@ -27,18 +27,25 @@ class ReleaseNotesScraper:
             soup = BeautifulSoup(response.content, "lxml")
             
             releases = []
-            # Assuming the page has a list of releases with links
-            # This is a placeholder - actual parsing depends on page structure
-            release_links = soup.find_all("a", href=True)
+            # Look for release note links - adjust selectors based on actual page structure
+            # Dynatrace release notes typically have links like "/managed/whats-new/release-notes/dynatrace-managed-1-XXX"
+            release_links = soup.find_all('a', href=lambda x: x and '/whats-new/release-notes/' in x)
             
-            for link in release_links:
-                if "release" in link.get("href", "").lower():
-                    release_url = link["href"] if link["href"].startswith("http") else f"https://docs.dynatrace.com{link['href']}"
-                    title = link.get_text().strip()
-                    
-                    # Scrape individual release page
-                    release_content = self._scrape_release_page(release_url)
-                    
+            for link in release_links[:5]:  # Limit to recent releases for testing
+                href = link.get('href')
+                if href.startswith('/'):
+                    release_url = f"https://docs.dynatrace.com{href}"
+                else:
+                    release_url = href
+                
+                title = link.get_text().strip()
+                if not title:
+                    title = "Release Notes"
+                
+                # Scrape individual release page
+                release_content = self._scrape_release_page(release_url)
+                
+                if release_content:  # Only include if we got content
                     releases.append({
                         "title": title,
                         "url": release_url,
@@ -62,9 +69,39 @@ class ReleaseNotesScraper:
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, "lxml")
-            # Extract main content - adjust selectors based on actual page structure
-            content_div = soup.find("div", class_="content") or soup.find("main")
-            return content_div.get_text() if content_div else soup.get_text()
+            
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.extract()
+            
+            # Try to find main content area - Dynatrace docs typically use specific classes
+            content_selectors = [
+                'div.content',
+                'main',
+                'article',
+                'div.markdown-body',
+                'div.article-content',
+                '.documentation-content'
+            ]
+            
+            content_div = None
+            for selector in content_selectors:
+                content_div = soup.select_one(selector)
+                if content_div:
+                    break
+            
+            if not content_div:
+                # Fallback to body text
+                content_div = soup.find('body')
+            
+            if content_div:
+                # Get text and clean it up
+                text = content_div.get_text(separator='\n', strip=True)
+                # Remove excessive whitespace
+                lines = [line.strip() for line in text.split('\n') if line.strip()]
+                return '\n'.join(lines)
+            
+            return ""
             
         except Exception as e:
             logger.error(f"Error scraping release page {url}: {e}")

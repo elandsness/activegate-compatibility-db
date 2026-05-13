@@ -9,8 +9,9 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.reasoning.citation_generator import QueryProcessor
-from src.nlp.nlp_pipeline import NLPPipeline
+from src.nlp.nlp_pipeline import NLPPipeline, FactConverter
 from src.storage.graph_connection import GraphConnection
+from src.storage.graph_populater import GraphPopulator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def get_reasoner():
 reasoner = get_reasoner()
 query_processor = QueryProcessor(reasoner)
 nlp_pipeline = NLPPipeline()
+graph_populator = GraphPopulator(get_graph_connection())
 
 
 @app.route('/api/health', methods=['GET'])
@@ -226,6 +228,10 @@ def ingest_data():
                 source_title=doc.get('title', 'Document')
             )
             facts_extracted += len(result.compatibility_statements)
+            
+            # Convert to facts and store in graph
+            facts = FactConverter.convert_to_facts(result)
+            graph_populator.populate_from_facts(facts)
 
         return jsonify({
             'status': 'success',
