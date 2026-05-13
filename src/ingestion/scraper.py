@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ReleaseNotesScraper:
-    def __init__(self, base_url: str = "https://docs.dynatrace.com/managed/whats-new"):
+    def __init__(self, base_url: str = "https://docs.dynatrace.com/managed/whats-new/activegate"):
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update({
@@ -17,8 +17,8 @@ class ReleaseNotesScraper:
 
     def scrape_release_notes(self) -> List[Dict]:
         """
-        Scrape the main release notes page and extract individual release entries.
-        Returns a list of dicts with title, date, url, and content.
+        Scrape the ActiveGate release notes section and extract individual sprint releases.
+        Returns a list of dicts with title, version, url, and content.
         """
         try:
             response = self.session.get(self.base_url)
@@ -26,88 +26,82 @@ class ReleaseNotesScraper:
             
             soup = BeautifulSoup(response.content, "lxml")
             
-            releases = []
-            # Find ALL links and filter for release note pages
-            all_links = soup.find_all('a', href=True)
+            content_area = soup.select_one('div.content') or soup.body
+            all_links = content_area.find_all('a', href=True)
             
             release_candidates = []
             for link in all_links:
                 href = link.get('href')
                 text = link.get_text().strip()
                 
-                # Check if this looks like a release note link
-                if self._is_release_note_link(href, text):
+                if self._is_activegate_release_link(href, text):
                     full_url = href if href.startswith('http') else f"https://docs.dynatrace.com{href}"
                     release_candidates.append({
                         'url': full_url,
-                        'title': text or href.split('/')[-1].replace('-', ' ').title(),
-                        'link_text': text,
+                        'title': text,
                         'href': href
                     })
             
-            logger.info(f"Found {len(release_candidates)} potential release note links")
+            logger.info(f"Found {len(release_candidates)} ActiveGate sprint release links")
             
-            # Scrape the first 5 release pages
-            for candidate in release_candidates[:5]:
-                logger.info(f"Scraping: {candidate['title']} -> {candidate['url']}")
-                
+            releases = []
+            for candidate in release_candidates[:10]:
+                logger.info(f"Scraping ActiveGate release page: {candidate['url']}")
                 release_content = self._scrape_release_page(candidate['url'])
-                
-                if release_content and len(release_content.strip()) > 200:  # Substantial content
+                release_version = self._extract_release_version(candidate['url'], release_content)
+                title = candidate['title'] or (f"ActiveGate {release_version}" if release_version else "ActiveGate Release")
+
+                if release_content and len(release_content.strip()) > 200:
                     releases.append({
-                        "title": candidate['title'],
+                        "title": title,
+                        "version": release_version,
                         "url": candidate['url'],
                         "content": release_content,
                         "scraped_at": str(datetime.now())
                     })
-                    logger.info(f"Successfully scraped release with {len(release_content)} chars")
+                    logger.info(f"Successfully scraped release {release_version or 'unknown'} with {len(release_content)} chars")
                 else:
                     logger.warning(f"No substantial content found for {candidate['url']}")
             
-            logger.info(f"Total releases scraped: {len(releases)}")
+            logger.info(f"Total ActiveGate releases scraped: {len(releases)}")
             return releases
             
         except Exception as e:
             logger.error(f"Error scraping release notes: {e}")
             return []
 
-    def _is_release_note_link(self, href: str, text: str) -> bool:
-        """Determine if a link points to a release notes page."""
+    def _is_activegate_release_link(self, href: str, text: str) -> bool:
+        """Determine if a link points to an ActiveGate sprint release page."""
         if not href:
             return False
 
         href_lower = href.lower().strip()
-        text_lower = (text or '').lower().strip()
 
-        # Exclude fragment-only anchors, JavaScript, mailto, and current-page references
         if href_lower.startswith('#') or href_lower.startswith('javascript:') or href_lower.startswith('mailto:'):
             return False
-        if '#' in href_lower and href_lower.count('#') == 1 and href_lower.split('#')[0].strip() == '':
-            return False
-
-        # Require actual release note or whats-new paths, not footnote anchors.
-        if '/managed/whats-new/' not in href_lower and 'release-notes' not in href_lower:
-            return False
-        if href_lower.endswith('/managed/whats-new') or href_lower.endswith('/whats-new'):
-            return False
-
-        import re
-        version_pattern = r'\b\d+\.\d+'  # Like 1.234
-
-        # Only accept paths that look like real release or category pages
-        indicators = [
-            'release-notes' in href_lower,
-            '/managed/whats-new/' in href_lower,
-            re.search(version_pattern, href_lower),
-            re.search(version_pattern, text_lower),
-            'version' in text_lower,
-        ]
-
-        # Reject common page anchors that still pass due to numeric IDs
         if '#fn-' in href_lower or '#toc' in href_lower or 'footnote' in href_lower:
             return False
 
-        return any(indicators)
+        if '/managed/whats-new/activegate/' not in href_lower:
+            return False
+        if '/sprint-' not in href_lower:
+            return False
+
+        return True
+
+    def _extract_release_version(self, url: str, content_text: str = "") -> str:
+        """Extract the ActiveGate release version from a page URL or page content."""
+        import re
+
+        title_match = re.search(r'ActiveGate\s+(\d+\.\d+)', content_text, re.IGNORECASE)
+        if title_match:
+            return title_match.group(1)
+
+        url_match = re.search(r'sprint-(\d+)', url, re.IGNORECASE)
+        if url_match:
+            return f"1.{url_match.group(1)}"
+
+        return ""
 
     def _scrape_release_page(self, url: str) -> str:
         """
