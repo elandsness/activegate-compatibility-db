@@ -1,3 +1,4 @@
+import re
 import requests
 from bs4 import BeautifulSoup
 import logging
@@ -35,13 +36,38 @@ class ReleaseNotesScraper:
                 text = link.get_text().strip()
                 
                 if self._is_activegate_release_link(href, text):
-                    full_url = href if href.startswith('http') else f"https://docs.dynatrace.com{href}"
+                    if href.startswith('http'):
+                        full_url = href
+                    elif href.startswith('/whats-new/activegate/'):
+                        full_url = f"https://docs.dynatrace.com/managed{href}"
+                    else:
+                        full_url = f"https://docs.dynatrace.com{href}"
                     release_candidates.append({
                         'url': full_url,
                         'title': text,
                         'href': href
                     })
-            
+
+            # Fallback for client-rendered Next.js pages where links are embedded in escaped JSON payloads
+            if not release_candidates:
+                raw_text = response.text
+                plain_pattern = re.compile(r'"href"\s*:\s*"(\/managed\/whats-new\/activegate\/sprint-\d+|\/whats-new\/activegate\/sprint-\d+)"')
+                escaped_pattern = re.compile(r'\\"href\\"\s*:\s*\\"(\/managed\/whats-new\/activegate\/sprint-\d+|\/whats-new\/activegate\/sprint-\d+)\\"')
+                matches = plain_pattern.findall(raw_text) or escaped_pattern.findall(raw_text)
+                for href in matches:
+                    if href.startswith('http'):
+                        full_url = href
+                    elif href.startswith('/whats-new/activegate/'):
+                        full_url = f"https://docs.dynatrace.com/managed{href}"
+                    else:
+                        full_url = f"https://docs.dynatrace.com{href}"
+                    if full_url not in [candidate['url'] for candidate in release_candidates]:
+                        release_candidates.append({
+                            'url': full_url,
+                            'title': '',
+                            'href': href
+                        })
+
             logger.info(f"Found {len(release_candidates)} ActiveGate sprint release links")
             
             releases = []
@@ -82,7 +108,7 @@ class ReleaseNotesScraper:
         if '#fn-' in href_lower or '#toc' in href_lower or 'footnote' in href_lower:
             return False
 
-        if '/managed/whats-new/activegate/' not in href_lower:
+        if '/whats-new/activegate/' not in href_lower and '/managed/whats-new/activegate/' not in href_lower:
             return False
         if '/sprint-' not in href_lower:
             return False
