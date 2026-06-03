@@ -39,20 +39,22 @@ class CompatibilityIssue:
 class CompatibilityResult:
     """Complete result of a compatibility check."""
     status: CompatibilityStatus
-    activegate_version: str
-    target_version: str
+    current_activegate_version: str
+    target_activegate_version: str
+    managed_cluster_version: str = 'N/A'
     issues: List[CompatibilityIssue] = field(default_factory=list)
     warnings: List[CompatibilityIssue] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
     citations: List[Dict] = field(default_factory=list)
     confidence: float = 0.0
     checked_factors: Dict = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict:
         return {
             'status': self.status.value,
-            'activegate_version': self.activegate_version,
-            'target_version': self.target_version,
+            'current_activegate_version': self.current_activegate_version,
+            'target_activegate_version': self.target_activegate_version,
+            'managed_cluster_version': self.managed_cluster_version,
             'issues': [i.to_dict() for i in self.issues],
             'warnings': [w.to_dict() for w in self.warnings],
             'recommendations': self.recommendations,
@@ -197,8 +199,9 @@ class CompatibilityReasoner:
         
         return CompatibilityResult(
             status=status,
-            activegate_version=target_version,
-            target_version=managed_cluster_version or 'N/A',
+            current_activegate_version=current_version,
+            target_activegate_version=target_version,
+            managed_cluster_version=managed_cluster_version or 'N/A',
             issues=issues,
             warnings=warnings,
             recommendations=recommendations,
