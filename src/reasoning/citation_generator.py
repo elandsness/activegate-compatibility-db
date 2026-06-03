@@ -195,10 +195,10 @@ class QueryProcessor:
         
         emoji = status_emoji.get(result.status.value, '❓')
         output.append(f"\n{emoji} Status: {result.status.value}")
-        output.append(f"ActiveGate Version: {result.activegate_version}")
-        
-        if result.target_version != 'N/A':
-            output.append(f"Target: {result.target_version}")
+        output.append(f"Upgrading: {result.current_activegate_version} → {result.target_activegate_version}")
+
+        if result.managed_cluster_version != 'N/A':
+            output.append(f"Managed Cluster: {result.managed_cluster_version}")
         
         output.append(f"Confidence: {result.confidence:.0%}")
         
