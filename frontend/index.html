@@ -284,7 +284,7 @@
             {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
             {activeTab === 'chat' && <ChatTab />}
             {activeTab === 'data' && (
-              <DataTab versions={versions} relationships={relationships} />
+              <DataTab versions={versions} relationships={relationships} onDataChange={fetchData} />
             )}
           </div>
         );
@@ -385,7 +385,7 @@
         );
       }
 
-      function DataTab({ versions, relationships }) {
+      function DataTab({ versions, relationships, onDataChange }) {
         return (
           <div className="data-container">
             <div className="stats-grid">
@@ -414,7 +414,7 @@
                   });
                   const data = await res.json();
                   alert(data.message || data.error || 'Graph clear completed');
-                  fetchData();
+                  onDataChange();
                 } catch (e) {
                   alert('Failed to clear graph: ' + e.message);
                 }

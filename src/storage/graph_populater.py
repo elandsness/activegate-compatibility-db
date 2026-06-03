@@ -25,18 +25,17 @@ class GraphPopulator:
     def populate_from_facts(self, facts: List[ExtractedFact]) -> int:
         """
         Populate graph from a list of extracted facts.
-        
+
         Args:
             facts: List of ExtractedFact objects to insert
-        
+
         Returns:
             Count of facts inserted
         """
-        # Ensure connection is established
-        connected = self.graph_conn.connect()
-        if not connected:
-            logger.error("Failed to connect to Neo4j: cannot insert facts")
-            return 0
+        if not self.graph_conn.driver:
+            if not self.graph_conn.connect():
+                logger.error("Failed to connect to Neo4j: cannot insert facts")
+                return 0
 
         inserted = 0
         for fact in facts:
@@ -51,9 +50,10 @@ class GraphPopulator:
     
     def ensure_activegate_release_node(self, version: str, title: str, source_url: str) -> bool:
         """Ensure an ActiveGate release node exists in Neo4j."""
-        if not self.graph_conn.connect():
-            logger.error("Failed to connect to Neo4j: cannot ensure release node")
-            return False
+        if not self.graph_conn.driver:
+            if not self.graph_conn.connect():
+                logger.error("Failed to connect to Neo4j: cannot ensure release node")
+                return False
 
         query = """
         MERGE (ag:ActiveGateVersion {version: $version})
@@ -89,148 +89,162 @@ class GraphPopulator:
     
     def _insert_compatibility_statement(self, fact: ExtractedFact) -> bool:
         """Insert a compatibility statement fact."""
-        # Extract component type from predicate (e.g., 'activegate_compatible' -> 'activegate', 'compatible')
+        # Predicate format: '<component>_<statement_type>', e.g. 'activegate_compatible'
         parts = fact.predicate.split('_')
         if len(parts) < 2:
             return False
-        
+
         component = parts[0]
-        relationship_type = '_'.join(parts[1:]).upper()
-        
-        # Create nodes and relationships based on component type
+        statement_type = '_'.join(parts[1:])  # e.g. 'compatible', 'end_of_support'
+
+        # Map statement types to graph relationship names
+        rel_map = {
+            'compatible': 'COMPATIBLE_WITH',
+            'requires': 'REQUIRES',
+            'deprecated': 'DEPRECATED_IN',
+            'requires_upgrade': 'REQUIRES_UPGRADE',
+            'end_of_support': 'END_OF_SUPPORT',
+            'incompatible': 'INCOMPATIBLE_WITH',
+            'supported': 'SUPPORTED_BY',
+        }
+        relationship_type = rel_map.get(statement_type, statement_type.upper())
+
         if component == 'activegate':
-            return self._insert_activegate_compatibility(
-                fact, relationship_type
-            )
+            return self._insert_activegate_compatibility(fact, relationship_type)
         elif component == 'os':
-            return self._insert_os_compatibility(
-                fact, relationship_type
-            )
+            return self._insert_os_compatibility(fact, relationship_type)
         elif component == 'extension':
-            return self._insert_extension_compatibility(
-                fact, relationship_type
-            )
+            return self._insert_extension_compatibility(fact, relationship_type)
         elif component == 'managed_cluster':
-            return self._insert_managed_cluster_compatibility(
-                fact, relationship_type
-            )
-        
+            return self._insert_managed_cluster_compatibility(fact, relationship_type)
+
         return False
-    
+
     def _insert_activegate_compatibility(self, fact: ExtractedFact, relationship_type: str) -> bool:
-        """Insert ActiveGate compatibility information."""
-        query = """
-        MERGE (ag:ActiveGateVersion {version: $version})
-        SET ag.last_seen = datetime()
-        WITH ag
-        MERGE (source:Source {url: $source_url})
-        SET source.title = $source_title, source.timestamp = datetime()
-        WITH ag, source
-        CREATE (provenance:Provenance {
-            source_url: $source_url,
-            confidence: $confidence,
-            extracted_at: datetime(),
-            raw_text: $raw_text
-        })
-        CREATE (ag)-[:HAS_PROVENANCE]->(provenance)
-        CREATE (provenance)-[:FROM_SOURCE]->(source)
-        RETURN ag, provenance
-        """
-        
+        """Insert ActiveGate node and, when an object version exists, a typed relationship to it."""
         try:
-            result = self.graph_conn.execute(query, {
-                'version': fact.subject,
-                'source_url': fact.source_url,
-                'source_title': 'Release Notes',
-                'confidence': fact.confidence,
-                'raw_text': fact.source_text
-            })
-            return result is not None
+            # Always ensure the subject ActiveGate node exists
+            self.graph_conn.execute(
+                "MERGE (ag:ActiveGateVersion {version: $version}) SET ag.last_seen = datetime()",
+                {'version': fact.subject}
+            )
+
+            # If we have an object (related version), create the typed relationship
+            if fact.object and fact.object != 'activegate':
+                query = f"""
+                MERGE (ag:ActiveGateVersion {{version: $ag_version}})
+                MERGE (mc:ManagedClusterVersion {{version: $mc_version}})
+                MERGE (ag)-[r:{relationship_type}]->(mc)
+                SET r.source_url = $source_url,
+                    r.confidence  = $confidence,
+                    r.raw_text    = $raw_text,
+                    r.updated_at  = datetime()
+                RETURN r
+                """
+                self.graph_conn.execute(query, {
+                    'ag_version':  fact.subject,
+                    'mc_version':  fact.object,
+                    'source_url':  fact.source_url,
+                    'confidence':  fact.confidence,
+                    'raw_text':    fact.source_text,
+                })
+            return True
         except Exception as e:
             logger.error(f"Error inserting ActiveGate compatibility: {e}")
             return False
-    
+
     def _insert_os_compatibility(self, fact: ExtractedFact, relationship_type: str) -> bool:
-        """Insert OS compatibility information."""
-        query = """
-        MERGE (os:OSVersion {os_name: 'Unknown', version: $version})
-        SET os.last_seen = datetime()
-        WITH os
-        MERGE (source:Source {url: $source_url})
-        WITH os, source
-        CREATE (provenance:Provenance {
-            source_url: $source_url,
-            confidence: $confidence,
-            extracted_at: datetime()
-        })
-        CREATE (os)-[:HAS_PROVENANCE]->(provenance)
-        RETURN os, provenance
-        """
-        
+        """Insert OS node and link it to the ActiveGate version via SUPPORTED_BY."""
         try:
-            result = self.graph_conn.execute(query, {
-                'version': fact.subject,
-                'source_url': fact.source_url,
-                'confidence': fact.confidence
-            })
-            return result is not None
+            # Parse 'family version' from subject, e.g. 'linux 8' or just 'linux'
+            parts = fact.subject.split() if fact.subject else []
+            os_name = parts[0] if parts else 'Unknown'
+            os_ver = parts[1] if len(parts) > 1 else 'unknown'
+
+            self.graph_conn.execute(
+                "MERGE (os:OSVersion {os_name: $os_name, version: $version}) SET os.last_seen = datetime()",
+                {'os_name': os_name, 'version': os_ver}
+            )
+
+            if fact.object:
+                query = """
+                MERGE (ag:ActiveGateVersion {version: $ag_version})
+                MERGE (os:OSVersion {os_name: $os_name, version: $os_version})
+                MERGE (ag)-[r:SUPPORTED_BY]->(os)
+                SET r.source_url = $source_url,
+                    r.confidence  = $confidence,
+                    r.updated_at  = datetime()
+                RETURN r
+                """
+                self.graph_conn.execute(query, {
+                    'ag_version': fact.object,
+                    'os_name':    os_name,
+                    'os_version': os_ver,
+                    'source_url': fact.source_url,
+                    'confidence': fact.confidence,
+                })
+            return True
         except Exception as e:
             logger.error(f"Error inserting OS compatibility: {e}")
             return False
-    
+
     def _insert_extension_compatibility(self, fact: ExtractedFact, relationship_type: str) -> bool:
-        """Insert extension compatibility information."""
-        query = """
-        MERGE (ext:Extension {id: $extension_id, version: $version})
-        SET ext.last_seen = datetime()
-        WITH ext
-        MERGE (source:Source {url: $source_url})
-        WITH ext, source
-        CREATE (provenance:Provenance {
-            source_url: $source_url,
-            confidence: $confidence,
-            extracted_at: datetime()
-        })
-        CREATE (ext)-[:HAS_PROVENANCE]->(provenance)
-        RETURN ext, provenance
-        """
-        
+        """Insert Extension node and link to ActiveGate via the appropriate relationship."""
         try:
-            result = self.graph_conn.execute(query, {
-                'extension_id': fact.object or 'unknown',
-                'version': fact.subject,
-                'source_url': fact.source_url,
-                'confidence': fact.confidence
-            })
-            return result is not None
+            ext_id = fact.subject or 'unknown'
+            ag_version = fact.object
+
+            self.graph_conn.execute(
+                "MERGE (ext:Extension {id: $ext_id}) SET ext.last_seen = datetime()",
+                {'ext_id': ext_id}
+            )
+
+            if ag_version:
+                query = f"""
+                MERGE (ag:ActiveGateVersion {{version: $ag_version}})
+                MERGE (ext:Extension {{id: $ext_id}})
+                MERGE (ag)-[r:{relationship_type}]->(ext)
+                SET r.source_url = $source_url,
+                    r.confidence  = $confidence,
+                    r.updated_at  = datetime()
+                RETURN r
+                """
+                self.graph_conn.execute(query, {
+                    'ag_version': ag_version,
+                    'ext_id':     ext_id,
+                    'source_url': fact.source_url,
+                    'confidence': fact.confidence,
+                })
+            return True
         except Exception as e:
             logger.error(f"Error inserting extension compatibility: {e}")
             return False
-    
+
     def _insert_managed_cluster_compatibility(self, fact: ExtractedFact, relationship_type: str) -> bool:
-        """Insert Managed cluster compatibility information."""
-        query = """
-        MERGE (mc:ManagedClusterVersion {version: $version})
-        SET mc.last_seen = datetime()
-        WITH mc
-        MERGE (source:Source {url: $source_url})
-        WITH mc, source
-        CREATE (provenance:Provenance {
-            source_url: $source_url,
-            confidence: $confidence,
-            extracted_at: datetime()
-        })
-        CREATE (mc)-[:HAS_PROVENANCE]->(provenance)
-        RETURN mc, provenance
-        """
-        
+        """Insert ManagedClusterVersion node and link to ActiveGate via the appropriate relationship."""
         try:
-            result = self.graph_conn.execute(query, {
-                'version': fact.subject,
-                'source_url': fact.source_url,
-                'confidence': fact.confidence
-            })
-            return result is not None
+            self.graph_conn.execute(
+                "MERGE (mc:ManagedClusterVersion {version: $version}) SET mc.last_seen = datetime()",
+                {'version': fact.subject}
+            )
+
+            if fact.object:
+                query = f"""
+                MERGE (ag:ActiveGateVersion {{version: $ag_version}})
+                MERGE (mc:ManagedClusterVersion {{version: $mc_version}})
+                MERGE (ag)-[r:{relationship_type}]->(mc)
+                SET r.source_url = $source_url,
+                    r.confidence  = $confidence,
+                    r.updated_at  = datetime()
+                RETURN r
+                """
+                self.graph_conn.execute(query, {
+                    'ag_version': fact.object,
+                    'mc_version': fact.subject,
+                    'source_url': fact.source_url,
+                    'confidence': fact.confidence,
+                })
+            return True
         except Exception as e:
             logger.error(f"Error inserting Managed cluster compatibility: {e}")
             return False
