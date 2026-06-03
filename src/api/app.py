@@ -12,6 +12,7 @@ from src.reasoning.citation_generator import QueryProcessor
 from src.nlp.nlp_pipeline import NLPPipeline, FactConverter
 from src.storage.graph_connection import GraphConnection
 from src.storage.graph_populater import GraphPopulator
+from src.storage.graph_query import GraphQuery
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ def index():
     })
 
 
-def get_graph_connection():
-    """Get Neo4j connection from environment variables."""
+def _make_graph_connection() -> GraphConnection:
+    """Create a GraphConnection from environment variables."""
     return GraphConnection(
         uri=os.environ.get('NEO4J_URI', 'bolt://localhost:7687'),
         user=os.environ.get('NEO4J_USER', 'neo4j'),
@@ -49,22 +50,30 @@ def get_graph_connection():
     )
 
 
-def get_reasoner():
-    """Get or create CompatibilityReasoner instance."""
-    try:
-        graph_conn = get_graph_connection()
-        graph_conn.connect()
-        return CompatibilityReasoner(graph_query=None)
-    except Exception as e:
-        logger.warning(f"Could not connect to Neo4j: {e}. Using offline mode.")
-        return CompatibilityReasoner()
+def _init_components():
+    """Initialise shared components, wiring the graph into the reasoner when available."""
+    graph_conn = _make_graph_connection()
+    connected = graph_conn.connect()
+
+    if connected:
+        graph_query = GraphQuery(graph_conn)
+        reasoner = CompatibilityReasoner(graph_query=graph_query)
+        graph_pop = GraphPopulator.__new__(GraphPopulator)
+        graph_pop.graph_conn = graph_conn
+        logger.info("Components initialised with live Neo4j connection.")
+    else:
+        logger.warning("Neo4j unavailable at startup — running in offline mode.")
+        graph_query = None
+        reasoner = CompatibilityReasoner(graph_query=None)
+        graph_pop = GraphPopulator(_make_graph_connection())
+
+    return reasoner, graph_pop
 
 
-# Initialize components
-reasoner = get_reasoner()
+# Module-level singletons
+reasoner, graph_populator = _init_components()
 query_processor = QueryProcessor(reasoner)
 nlp_pipeline = NLPPipeline()
-graph_populator = GraphPopulator(get_graph_connection())
 
 
 @app.route('/api/health', methods=['GET'])
@@ -106,15 +115,16 @@ def chat():
             'status': 'UNKNOWN'
         })
     
-    # Run compatibility check
+    # Run compatibility check, querying the graph when available
     result = reasoner.check_upgrade_compatibility(
         current_version=current,
-        target_version=target
+        target_version=target,
+        use_graph=reasoner.graph_query is not None
     )
-    
+
     # Format response
     response_text = query_processor.format_result_for_display(result)
-    
+
     return jsonify({
         'response': response_text,
         'versions_detected': {'current': current, 'target': target},
@@ -143,16 +153,16 @@ def check_compatibility():
     if not current or not target:
         return jsonify({'error': 'Current and target versions required'}), 400
     
-    # Run compatibility check
     result = reasoner.check_upgrade_compatibility(
         current_version=current,
         target_version=target,
         os_family=os_family,
         os_version=os_version,
         managed_cluster_version=managed,
-        extensions=extensions
+        extensions=extensions,
+        use_graph=reasoner.graph_query is not None
     )
-    
+
     return jsonify(result.to_dict())
 
 
@@ -276,13 +286,6 @@ def ingest_data():
             'documents': processed_docs
         })
 
-        return jsonify({
-            'status': 'success',
-            'source': source,
-            'items_scraped': items_scraped,
-            'facts_extracted': facts_extracted
-        })
-
     except Exception as e:
         logger.error(f"Ingest error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -291,50 +294,50 @@ def ingest_data():
 @app.route('/api/data/versions', methods=['GET'])
 def get_versions():
     """Get all ActiveGate versions in the database."""
+    graph_conn = _make_graph_connection()
     try:
-        graph_conn = get_graph_connection()
         graph_conn.connect()
-        
         query = "MATCH (ag:ActiveGateVersion) RETURN ag.version as version ORDER BY ag.version"
         result = graph_conn.execute(query)
-        
         versions = [record['version'] for record in result]
         return jsonify({'versions': versions})
     except Exception as e:
         return jsonify({'error': str(e), 'versions': []}), 500
+    finally:
+        graph_conn.disconnect()
 
 
 @app.route('/api/data/relationships', methods=['GET'])
 def get_relationships():
     """Get relationship statistics."""
+    graph_conn = _make_graph_connection()
     try:
-        graph_conn = get_graph_connection()
         graph_conn.connect()
-        
-        # Count relationships by type
         query = """
         MATCH (a)-[r]->(b)
         RETURN type(r) as relationship, count(*) as count
         """
         result = graph_conn.execute(query)
-        
         relationships = [{'type': r['relationship'], 'count': r['count']} for r in result]
         return jsonify({'relationships': relationships})
     except Exception as e:
         return jsonify({'error': str(e), 'relationships': []}), 500
+    finally:
+        graph_conn.disconnect()
 
 
 @app.route('/api/admin/clear-graph', methods=['POST'])
 def clear_graph():
     """Clear all Neo4j graph data. Use for resetting ingestion state."""
+    graph_conn = _make_graph_connection()
     try:
-        graph_conn = get_graph_connection()
         graph_conn.connect()
         graph_conn.clear_database()
-        graph_conn.disconnect()
         return jsonify({'status': 'success', 'message': 'Neo4j graph cleared'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        graph_conn.disconnect()
 
 
 @app.route('/api/visualize', methods=['GET'])

@@ -25,18 +25,20 @@ class Version:
 
 class VersionParser:
     """Parse and normalize version numbers."""
-    
-    VERSION_PATTERN = r'(\d+)\.(\d+)\.(\d+)'
-    
+
+    # Matches 2-part (1.330) and 3-part (1.330.0) versions.
+    # Dynatrace uses 2-part versioning (e.g. 1.335), so the patch segment is optional.
+    VERSION_PATTERN = r'(\d+)\.(\d+)(?:\.(\d+))?'
+
     @staticmethod
     def parse(version_str: str) -> Optional[Version]:
         """Parse a version string and return a Version object."""
         match = re.search(VersionParser.VERSION_PATTERN, version_str)
         if match:
             major, minor, patch = match.groups()
-            return Version(int(major), int(minor), int(patch), version_str)
+            return Version(int(major), int(minor), int(patch) if patch is not None else 0, version_str)
         return None
-    
+
     @staticmethod
     def find_all_versions(text: str) -> List[Tuple[Version, str]]:
         """Find all version numbers in text and their context."""
