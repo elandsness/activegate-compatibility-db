@@ -124,7 +124,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            dynatrace/activegate-compatibility
+            elandsness/activegate-compatibility
           tags: |
             type=ref,event=branch
             type=ref,event=pr
