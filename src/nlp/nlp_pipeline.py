@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 import json
@@ -121,6 +122,8 @@ class NLPPipeline:
                 'subject_version': s.subject_version,
                 'related_version': s.related_version,
                 'component': s.component,
+                'subject_component': s.subject_component,
+                'object_component': s.object_component,
                 'confidence': s.confidence,
                 'raw_text': s.raw_text,
             }
@@ -154,15 +157,18 @@ class NLPPipeline:
 class ExtractedFact:
     """Represents a single extracted fact ready for storage in the graph."""
     
-    def __init__(self, fact_type: str, subject: str, predicate: str, object_val: str, 
-                 confidence: float, source_url: str, source_text: str):
+    def __init__(self, fact_type: str, subject: str, predicate: str, object_val: Optional[str], 
+                 confidence: float, source_url: str, source_text: str,
+                 subject_type: str = 'unknown', object_type: str = 'unknown'):
         self.fact_type = fact_type  # 'compatibility', 'version_relation', 'deprecation', etc.
         self.subject = subject
-        self.predicate = predicate  # e.g., 'compatible_with', 'requires', 'deprecated_in'
+        self.predicate = predicate  # e.g., 'COMPATIBLE_WITH', 'REQUIRES', 'DEPRECATED_IN'
         self.object = object_val
         self.confidence = confidence
         self.source_url = source_url
         self.source_text = source_text
+        self.subject_type = subject_type
+        self.object_type = object_type
     
     def to_dict(self) -> Dict:
         return {
@@ -173,6 +179,8 @@ class ExtractedFact:
             'confidence': self.confidence,
             'source_url': self.source_url,
             'source_text': self.source_text,
+            'subject_type': self.subject_type,
+            'object_type': self.object_type,
         }
 
 
@@ -187,16 +195,46 @@ class FactConverter:
         # Convert compatibility statements to facts
         for stmt in extraction_result.compatibility_statements:
             fact_type = 'compatibility_statement'
-            predicate = f"{stmt['component']}_{stmt['type']}"
-            
+            subject_type = stmt.get('subject_component', stmt.get('component', 'unknown'))
+            object_type = stmt.get('object_component', 'unknown')
+            predicate = FactConverter._map_statement_to_predicate(stmt['type'], object_type)
+            object_val = stmt['related_version'] if stmt['related_version'] else None
+
+            # Normalize and enrich facts
+            base_conf = float(stmt.get('confidence', 0.5))
+            adjusted_conf = base_conf
+            if stmt.get('subject_version'):
+                adjusted_conf = min(1.0, adjusted_conf + 0.05)
+            if subject_type and subject_type != 'unknown':
+                adjusted_conf = min(1.0, adjusted_conf + 0.05)
+
+            subj_val = stmt['subject_version'] or 'unknown'
+
+            # If this is an extension-related statement try to resolve the extension name from extracted entities
+            if subject_type == 'extension':
+                exts = extraction_result.entities.get('extensions', []) if extraction_result.entities else []
+                match = None
+                for e in exts:
+                    # match by explicit version when possible
+                    if e.get('version') and stmt.get('subject_version') and e.get('version') == stmt.get('subject_version'):
+                        match = e
+                        break
+                if match:
+                    # normalize id-friendly name
+                    name = match.get('name') or 'extension'
+                    norm = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+                    subj_val = norm
+
             fact = ExtractedFact(
                 fact_type=fact_type,
-                subject=stmt['subject_version'] or 'unknown',
+                subject=subj_val,
                 predicate=predicate,
-                object_val=stmt['component'],
-                confidence=stmt['confidence'],
+                object_val=object_val,
+                confidence=adjusted_conf,
                 source_url=extraction_result.source_url,
-                source_text=stmt['raw_text']
+                source_text=stmt['raw_text'],
+                subject_type=subject_type,
+                object_type=object_type
             )
             facts.append(fact)
         
@@ -205,12 +243,48 @@ class FactConverter:
             fact = ExtractedFact(
                 fact_type='upgrade_path',
                 subject=pair['from_version'],
-                predicate='upgradeable_to',
+                predicate='UPGRADEABLE_TO',
                 object_val=pair['to_version'],
                 confidence=0.8,
                 source_url=extraction_result.source_url,
-                source_text=pair['raw_text']
+                source_text=pair['raw_text'],
+                subject_type='activegate',
+                object_type='activegate'
             )
             facts.append(fact)
         
         return facts
+
+    @staticmethod
+    def _map_statement_to_predicate(statement_type: str, object_type: str) -> str:
+        mapping = {
+            'compatible': {
+                'managed_cluster': 'REQUIRES',
+                'extension': 'COMPATIBLE_WITH',
+                'os': 'SUPPORTED_BY',
+                'activegate': 'COMPATIBLE_WITH'
+            },
+            'incompatible': {
+                'extension': 'INCOMPATIBLE_WITH',
+                'managed_cluster': 'INCOMPATIBLE_WITH',
+                'os': 'INCOMPATIBLE_WITH',
+                'activegate': 'INCOMPATIBLE_WITH'
+            },
+            'deprecated': {
+                'extension': 'DEPRECATED_IN',
+                'managed_cluster': 'DEPRECATED_IN',
+                'activegate': 'DEPRECATED_IN',
+            },
+            'requires_upgrade': {
+                'extension': 'REQUIRES_UPGRADE',
+                'managed_cluster': 'REQUIRES_UPGRADE',
+                'activegate': 'REQUIRES_UPGRADE',
+            },
+            'end_of_support': {
+                'managed_cluster': 'END_OF_SUPPORT',
+                'activegate': 'END_OF_SUPPORT',
+                'extension': 'END_OF_SUPPORT',
+                'os': 'END_OF_SUPPORT',
+            }
+        }
+        return mapping.get(statement_type, {}).get(object_type, statement_type.upper())

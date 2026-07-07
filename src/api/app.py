@@ -57,15 +57,14 @@ def _init_components():
 
     if connected:
         graph_query = GraphQuery(graph_conn)
+        graph_pop = GraphPopulator(graph_conn)
         reasoner = CompatibilityReasoner(graph_query=graph_query)
-        graph_pop = GraphPopulator.__new__(GraphPopulator)
-        graph_pop.graph_conn = graph_conn
         logger.info("Components initialised with live Neo4j connection.")
     else:
         logger.warning("Neo4j unavailable at startup — running in offline mode.")
         graph_query = None
         reasoner = CompatibilityReasoner(graph_query=None)
-        graph_pop = GraphPopulator(_make_graph_connection())
+        graph_pop = GraphPopulator(graph_conn)
 
     return reasoner, graph_pop
 

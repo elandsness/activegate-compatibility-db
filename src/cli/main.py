@@ -4,6 +4,7 @@ ActiveGate Compatibility Intelligence CLI
 Command-line interface for checking ActiveGate upgrade compatibility.
 """
 
+import os
 import sys
 import click
 import json
@@ -19,10 +20,26 @@ from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.reasoning.citation_generator import QueryProcessor
 from src.nlp.nlp_pipeline import NLPPipeline, FactConverter
 from src.storage.graph_visualizer import GraphVisualizer
+from src.storage.graph_connection import GraphConnection
+from src.storage.graph_query import GraphQuery
 
+
+def _make_graph_connection() -> GraphConnection:
+    return GraphConnection(
+        uri=os.environ.get('NEO4J_URI', 'bolt://localhost:7687'),
+        user=os.environ.get('NEO4J_USER', 'neo4j'),
+        password=os.environ.get('NEO4J_PASSWORD', 'password'),
+        database=os.environ.get('NEO4J_DATABASE', 'neo4j')
+    )
 
 # Initialize components
-reasoner = CompatibilityReasoner()
+graph_conn = _make_graph_connection()
+connected = graph_conn.connect()
+if connected:
+    graph_query = GraphQuery(graph_conn)
+else:
+    graph_query = None
+reasoner = CompatibilityReasoner(graph_query=graph_query)
 query_processor = QueryProcessor(reasoner)
 
 
@@ -189,7 +206,21 @@ def status():
     """Show system status and available data."""
     click.echo("=== ActiveGate Compatibility Intelligence ===")
     click.echo("")
-    click.echo("System Status: Ready")
+    if connected:
+        click.echo("Neo4j Status: Connected")
+        try:
+            stats = graph_conn.get_stats()
+            click.echo(f"ActiveGate versions: {stats.get('ActiveGateVersion_count', 0)}")
+            click.echo(f"Managed cluster versions: {stats.get('ManagedClusterVersion_count', 0)}")
+            click.echo(f"OS versions: {stats.get('OSVersion_count', 0)}")
+            click.echo(f"Extensions: {stats.get('Extension_count', 0)}")
+            click.echo(f"Total relationships: {stats.get('relationships_count', 0)}")
+        except Exception as e:
+            click.echo(f"Failed to query Neo4j stats: {e}")
+    else:
+        click.echo("Neo4j Status: Disconnected")
+        click.echo("  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE and ensure Neo4j is running.")
+
     click.echo("")
     click.echo("Known deprecated versions:")
     click.echo("  - 1.300, 1.310, 1.320, 1.325")
