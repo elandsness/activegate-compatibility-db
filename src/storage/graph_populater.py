@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Dict, Optional
 from datetime import datetime
 from src.storage.graph_connection import GraphConnection
@@ -89,36 +90,183 @@ class GraphPopulator:
     
     def _insert_compatibility_statement(self, fact: ExtractedFact) -> bool:
         """Insert a compatibility statement fact."""
-        # Predicate format: '<component>_<statement_type>', e.g. 'activegate_compatible'
-        parts = fact.predicate.split('_')
-        if len(parts) < 2:
+        relationship_type = fact.predicate
+
+        subject_label, subject_key = self._label_and_key_for_type(fact.subject_type, sample_value=fact.subject, is_subject=True, predicate=fact.predicate, context_text=fact.source_text)
+        object_label, object_key = self._label_and_key_for_type(fact.object_type, sample_value=fact.object, is_subject=False, predicate=fact.predicate, context_text=fact.source_text)
+
+        if subject_label is None:
+            logger.warning(f"Unknown subject type for fact: {fact.subject_type}")
             return False
 
-        component = parts[0]
-        statement_type = '_'.join(parts[1:])  # e.g. 'compatible', 'end_of_support'
+        # Ensure subject node exists
+        if not self._ensure_node(subject_label, subject_key, fact.subject):
+            return False
 
-        # Map statement types to graph relationship names
-        rel_map = {
-            'compatible': 'COMPATIBLE_WITH',
-            'requires': 'REQUIRES',
-            'deprecated': 'DEPRECATED_IN',
-            'requires_upgrade': 'REQUIRES_UPGRADE',
-            'end_of_support': 'END_OF_SUPPORT',
-            'incompatible': 'INCOMPATIBLE_WITH',
-            'supported': 'SUPPORTED_BY',
-        }
-        relationship_type = rel_map.get(statement_type, statement_type.upper())
+        # If there is no object value or relationship, nothing else to insert
+        if not fact.object or object_label is None:
+            return True
 
-        if component == 'activegate':
-            return self._insert_activegate_compatibility(fact, relationship_type)
-        elif component == 'os':
-            return self._insert_os_compatibility(fact, relationship_type)
-        elif component == 'extension':
-            return self._insert_extension_compatibility(fact, relationship_type)
-        elif component == 'managed_cluster':
-            return self._insert_managed_cluster_compatibility(fact, relationship_type)
+        # Ensure and create the relationship
+        return self._insert_typed_relationship(
+            subject_label, subject_key, fact.subject,
+            object_label, object_key, fact.object,
+            relationship_type, fact
+        )
 
-        return False
+    def _label_and_key_for_type(self, entity_type: str, sample_value: Optional[str] = None, is_subject: bool = True, predicate: Optional[str] = None, context_text: Optional[str] = None):
+        # Backwards-compatible wrapper that accepts optional inference parameters
+        return self._label_and_key_for_type_with_sample(entity_type, sample_value, is_subject, predicate, context_text)
+
+    def _label_and_key_for_type_with_sample(self, entity_type: str, sample_value: Optional[str], is_subject: bool, predicate: Optional[str], context_text: Optional[str]):
+        """Resolve a node label and key for a given entity type, with fallback inference.
+
+        Args:
+            entity_type: declared type (may be 'unknown')
+            sample_value: a sample value (e.g., '1.335' or 'custom-log-source') to help infer
+            is_subject: whether this is the subject side
+            predicate: relationship predicate to help inference
+        Returns: tuple(label, key) or (None, None) if unknown
+        """
+        if entity_type == 'activegate':
+            return 'ActiveGateVersion', 'version'
+        if entity_type == 'managed_cluster':
+            return 'ManagedClusterVersion', 'version'
+        if entity_type == 'extension':
+            return 'Extension', 'id'
+        if entity_type == 'os':
+            return 'OSVersion', None
+
+        # Normalize context
+        ctx = (context_text or '').lower()
+
+        # Infer from sample value
+        if sample_value:
+            sv = str(sample_value).strip()
+            # version-like -> choose ActiveGate for subjects, ManagedCluster for objects
+            if re.match(r'^\d+\.\d+(?:\.\d+)?$', sv):
+                # Heuristic: if context mentions 'managed' or predicate implies managed, treat as ManagedCluster for objects
+                if is_subject:
+                    # subject numeric is often ActiveGate
+                    return 'ActiveGateVersion', 'version'
+                else:
+                    if ('managed' in ctx) or (predicate and predicate in {'REQUIRES', 'INCOMPATIBLE_WITH', 'DEPRECATED_IN', 'END_OF_SUPPORT'}):
+                        return 'ManagedClusterVersion', 'version'
+                    return 'ActiveGateVersion', 'version'
+
+            # OS-like
+            if any(tok in sv.lower() for tok in ['linux', 'ubuntu', 'centos', 'rhel', 'windows', 'kubernetes']):
+                return 'OSVersion', None
+
+        # Infer from context when sample_value is absent or ambiguous
+        if not sample_value and ctx:
+            if 'activegate' in ctx or 'active gate' in ctx or 'ag ' in ctx:
+                return 'ActiveGateVersion', 'version'
+            if 'dynatrace managed' in ctx or 'managed cluster' in ctx or 'managed version' in ctx:
+                return 'ManagedClusterVersion', 'version'
+            if 'extension' in ctx or 'plugin' in ctx or 'module' in ctx:
+                return 'Extension', 'id'
+            if any(tok in ctx for tok in ['windows server', 'windows', 'linux', 'ubuntu', 'centos', 'rhel', 'kubernetes']):
+                return 'OSVersion', None
+
+            # Otherwise treat as extension id/name
+            if sample_value and re.search(r'[a-zA-Z]', sv):
+                return 'Extension', 'id'
+            if not sample_value and re.search(r'[a-zA-Z]', ctx):
+                return 'Extension', 'id'
+
+        return None, None
+
+    def _ensure_node(self, label: str, key: Optional[str], value: str) -> bool:
+        try:
+            if label == 'OSVersion':
+                os_properties = self._parse_os_properties(value)
+                if os_properties is None:
+                    return False
+                query = (
+                    "MERGE (os:OSVersion {os_name: $os_name, version: $version}) "
+                    "SET os.last_seen = datetime()"
+                )
+                params = {'os_name': os_properties['os_name'], 'version': os_properties['version']}
+            else:
+                query = f"MERGE (n:{label} {{{key}: $value}}) SET n.last_seen = datetime()"
+                params = {'value': value}
+
+            self.graph_conn.execute(query, params)
+            return True
+        except Exception as e:
+            logger.error(f"Error ensuring node {label}: {e}")
+            return False
+
+    def _parse_os_properties(self, value: str) -> Optional[Dict[str, str]]:
+        if not value:
+            return {'os_name': 'unknown', 'version': 'unknown'}
+
+        text = value.strip()
+        patterns = [
+            (r'(Windows Server)\s*(\d+(?:\.\d+)*)', 'Windows Server'),
+            (r'(Windows)\s*(\d+(?:\.\d+)*)', 'Windows'),
+            (r'(Ubuntu)\s*(\d+(?:\.\d+)*)', 'Ubuntu'),
+            (r'(CentOS|RHEL|Red Hat Enterprise Linux|Red Hat)\s*(\d+(?:\.\d+)*)', 'Linux'),
+            (r'(Linux)\s*(\d+(?:\.\d+)*)', 'Linux'),
+            (r'(Kubernetes)\s*(\d+\.\d+(?:\.\d+)*)', 'Kubernetes'),
+        ]
+
+        for pattern, name in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return {
+                    'os_name': match.group(1).title(),
+                    'version': match.group(2)
+                }
+
+        # Fallback: split into words and use first token as os_name
+        tokens = text.split()
+        if len(tokens) >= 2 and re.match(r'\d+(?:\.\d+)*', tokens[-1]):
+            return {'os_name': ' '.join(tokens[:-1]), 'version': tokens[-1]}
+
+        return {'os_name': text, 'version': 'unknown'}
+
+    def _insert_typed_relationship(self, 
+                                  subject_label: str, subject_key: str, subject_value: str,
+                                  object_label: str, object_key: Optional[str], object_value: str,
+                                  relationship_type: str,
+                                  fact: ExtractedFact) -> bool:
+        try:
+            if object_label == 'OSVersion':
+                os_properties = self._parse_os_properties(object_value)
+                if os_properties is None:
+                    return False
+                object_clause = "(obj:OSVersion {os_name: $os_name, version: $os_version})"
+                params = {
+                    'subject_value': subject_value,
+                    'os_name': os_properties['os_name'],
+                    'os_version': os_properties['version'],
+                    'source_url': fact.source_url,
+                    'confidence': fact.confidence,
+                    'raw_text': fact.source_text
+                }
+            elif object_key:
+                object_clause = f"(obj:{object_label} {{{object_key}: $object_value}})"
+                params = {
+                    'subject_value': subject_value,
+                    'object_value': object_value,
+                    'source_url': fact.source_url,
+                    'confidence': fact.confidence,
+                    'raw_text': fact.source_text
+                }
+            else:
+                return False
+
+            query = f"MERGE (sub:{subject_label} {{{subject_key}: $subject_value}}) MERGE {object_clause} " \
+                    f"MERGE (sub)-[r:{relationship_type}]->(obj) " \
+                    "SET r.source_url = $source_url, r.confidence = $confidence, r.raw_text = $raw_text, r.updated_at = datetime() " \
+                    "RETURN r"
+            self.graph_conn.execute(query, params)
+            return True
+        except Exception as e:
+            logger.error(f"Error inserting relationship {relationship_type}: {e}")
+            return False
 
     def _insert_activegate_compatibility(self, fact: ExtractedFact, relationship_type: str) -> bool:
         """Insert ActiveGate node and, when an object version exists, a typed relationship to it."""
