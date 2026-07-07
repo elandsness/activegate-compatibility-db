@@ -4,7 +4,7 @@ A system for checking ActiveGate upgrade compatibility for Dynatrace Managed env
 
 ## Features
 
-- **NLP-Powered Analysis**: Uses spaCy and regex-based extraction to understand release notes
+- **NLP-Powered Analysis**: Uses lightweight regex-based extraction (no heavy ML libraries required) to understand release notes
 - **Graph Database**: Neo4j for storing compatibility relationships
 - **CLI Interface**: Check compatibility via command line or config files
 - **Automated Updates**: Weekly data refresh from Dynatrace documentation
@@ -108,7 +108,7 @@ extensions:
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │                   NLP Extraction Engine                      │
-│              spaCy + regex entity extraction                │
+│              Regex-based entity extraction (spaCy optional)  │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
