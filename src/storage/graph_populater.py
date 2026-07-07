@@ -144,15 +144,27 @@ class GraphPopulator:
         if sample_value:
             sv = str(sample_value).strip()
             # version-like -> choose ActiveGate for subjects, ManagedCluster for objects
-            if re.match(r'^\d+\.\d+(?:\.\d+)?$', sv):
-                # Heuristic: if context mentions 'managed' or predicate implies managed, treat as ManagedCluster for objects
-                if is_subject:
-                    # subject numeric is often ActiveGate
-                    return 'ActiveGateVersion', 'version'
-                else:
-                    if ('managed' in ctx) or (predicate and predicate in {'REQUIRES', 'INCOMPATIBLE_WITH', 'DEPRECATED_IN', 'END_OF_SUPPORT'}):
-                        return 'ManagedClusterVersion', 'version'
-                    return 'ActiveGateVersion', 'version'
+            # Conservative numeric version handling:
+            # - ActiveGate versions follow the 1.xxx pattern; prefer ActiveGate only for values starting with '1.'
+            # - Other numeric patterns (e.g., '20.04', '16.04') are likely OS/distro versions; prefer OSVersion when context suggests OS
+            version_match = re.match(r'^(\d+)\.(\d+)(?:\.(\d+))?$', sv)
+            if version_match:
+                major = int(version_match.group(1))
+                # ActiveGate versions use major == 1
+                if sv.startswith('1.'):
+                    if is_subject:
+                        return 'ActiveGateVersion', 'version'
+                    else:
+                        if ('managed' in ctx) or (predicate and predicate in {'REQUIRES', 'INCOMPATIBLE_WITH', 'DEPRECATED_IN', 'END_OF_SUPPORT'}):
+                            return 'ManagedClusterVersion', 'version'
+                        return 'ActiveGateVersion', 'version'
+
+                # Common distro/version patterns (Ubuntu 16.04/18.04/20.04/etc.)
+                if major in {14,16,18,20,22,24} or any(tok in ctx for tok in ['ubuntu', 'centos', 'rhel', 'linux', 'windows']):
+                    return 'OSVersion', None
+
+                # Otherwise do not assume ActiveGate; leave unknown to avoid noisy nodes
+                return None, None
 
             # OS-like
             if any(tok in sv.lower() for tok in ['linux', 'ubuntu', 'centos', 'rhel', 'windows', 'kubernetes']):
