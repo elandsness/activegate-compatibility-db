@@ -109,6 +109,9 @@ Thumbs.db
 
 # Neo4j data (if local)
 data/
+!data/
+data/*
+!data/.gitkeep
 *.db
 
 # Environment variables
