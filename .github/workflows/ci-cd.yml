@@ -63,12 +63,12 @@ jobs:
       neo4j:
         image: neo4j:5.14-community
         env:
-          NEO4J_AUTH: "neo4j/${{ env.NEO4J_PASSWORD }}"
+          NEO4J_AUTH: neo4j/testpassword1
         ports:
           - 7474:7474
           - 7687:7687
         options: >-
-          --health-cmd "curl -fsS -u neo4j:${{ env.NEO4J_PASSWORD }} http://localhost:7474/ || exit 1"
+          --health-cmd "curl -fsS -u neo4j:testpassword1 http://localhost:7474/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
