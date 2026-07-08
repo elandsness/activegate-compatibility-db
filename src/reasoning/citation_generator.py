@@ -13,9 +13,7 @@ class Citation:
 
     source_url: str
     source_title: str
-    source_type: (
-        str  # 'release_notes', 'extension_docs', 'end_of_support', 'hub'
-    )
+    source_type: str  # 'release_notes', 'extension_docs', 'end_of_support', 'hub'
     relevant_text: str
     extracted_date: str
     confidence: float = 0.0
@@ -126,9 +124,7 @@ class QueryProcessor:
     Processes natural language queries and converts them to structured checks.
     """
 
-    def __init__(
-        self, reasoner, semantic_search=None, citation_generator=None
-    ):
+    def __init__(self, reasoner, semantic_search=None, citation_generator=None):
         self.reasoner = reasoner
         self.semantic_search = semantic_search
         self.citation_generator = citation_generator
@@ -182,9 +178,7 @@ class QueryProcessor:
             "target_version": input_data.get("target_activegate_version"),
             "os_family": input_data.get("os_family"),
             "os_version": input_data.get("os_version"),
-            "managed_cluster_version": input_data.get(
-                "managed_cluster_version"
-            ),
+            "managed_cluster_version": input_data.get("managed_cluster_version"),
             "extensions": input_data.get("extensions", []),
         }
 
@@ -217,9 +211,7 @@ class QueryProcessor:
         if result.issues:
             output.append(f"\n🚫 Issues ({len(result.issues)}):")
             for issue in result.issues:
-                output.append(
-                    f"  - [{issue.severity.upper()}] {issue.message}"
-                )
+                output.append(f"  - [{issue.severity.upper()}] {issue.message}")
                 if issue.recommendation:
                     output.append(f"    → {issue.recommendation}")
 
@@ -241,8 +233,6 @@ class QueryProcessor:
         if result.citations:
             output.append(f"\n📚 Sources ({len(result.citations)}):")
             for cite in result.citations:
-                output.append(
-                    f"  - {cite['source_title']}: {cite['source_url']}"
-                )
+                output.append(f"  - {cite['source_title']}: {cite['source_url']}")
 
         return "\n".join(output)
