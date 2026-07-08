@@ -140,9 +140,7 @@ def test_compatibility_extraction():
     print(f"Found {len(statements)} compatibility statements:")
     for stmt in statements[:5]:
         print(f"  - [{stmt.statement_type}] {stmt.raw_text[:60]}...")
-        print(
-            f"    Component: {stmt.component}, Confidence: {stmt.confidence:.2f}"
-        )
+        print(f"    Component: {stmt.component}, Confidence: {stmt.confidence:.2f}")
 
     # Summarize
     summary = extractor.summarize_statements(statements)
@@ -186,9 +184,7 @@ def test_nlp_pipeline():
     print(f"  - Versions: {len(result.entities['versions'])}")
     print(f"  - OS versions: {len(result.entities['os_versions'])}")
     print(f"  - Extensions: {len(result.entities['extensions'])}")
-    print(
-        f"  - Compatibility statements: {len(result.compatibility_statements)}"
-    )
+    print(f"  - Compatibility statements: {len(result.compatibility_statements)}")
     print(f"  - Version pairs: {len(result.version_pairs)}")
     print(f"\nConfidence scores: {result.confidence_scores}")
 

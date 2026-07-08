@@ -19,9 +19,7 @@ class CompatibilityIssue:
     """Represents a single compatibility issue found during reasoning."""
 
     severity: str  # 'critical', 'warning', 'info'
-    category: (
-        str  # 'version', 'os', 'extension', 'managed_cluster', 'deprecation'
-    )
+    category: str  # 'version', 'os', 'extension', 'managed_cluster', 'deprecation'
     message: str
     source_url: Optional[str] = None
     source_text: Optional[str] = None
@@ -463,9 +461,7 @@ class CompatibilityReasoner:
                 activegate_version=target,
                 managed_version=managed or "1.335",
                 os_family=os,
-                extensions=(
-                    [e.get("id") for e in extensions] if extensions else None
-                ),
+                extensions=([e.get("id") for e in extensions] if extensions else None),
             )
 
             # Convert graph result to issues
@@ -533,10 +529,7 @@ class CompatibilityReasoner:
                 recommendations.append(issue.recommendation)
 
         for warning in warnings:
-            if (
-                warning.recommendation
-                and warning.recommendation not in recommendations
-            ):
+            if warning.recommendation and warning.recommendation not in recommendations:
                 recommendations.append(warning.recommendation)
 
         return recommendations
