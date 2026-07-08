@@ -150,13 +150,17 @@ class ReleaseNotesScraper:
         """Extract the ActiveGate release version from a page URL or page content."""
         import re
 
-        title_match = re.search(r"ActiveGate\s+(\d+\.\d+)", content_text, re.IGNORECASE)
-        if title_match:
-            return title_match.group(1)
-
+        # Prefer sprint version from URL because page content can mention historical
+        # versions and cause incorrect labels (for example sprint-303 -> 1.299).
         url_match = re.search(r"sprint-(\d+)", url, re.IGNORECASE)
         if url_match:
             return f"1.{url_match.group(1)}"
+
+        title_match = re.search(
+            r"ActiveGate\s+(\d+\.\d+)", content_text, re.IGNORECASE
+        )
+        if title_match:
+            return title_match.group(1)
 
         return ""
 
