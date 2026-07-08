@@ -4,66 +4,82 @@ ActiveGate Compatibility Intelligence CLI
 Command-line interface for checking ActiveGate upgrade compatibility.
 """
 
-import os
-import sys
-import click
 import json
-import yaml
+import os
 from pathlib import Path
-from typing import List, Dict, Optional
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+import click
+import yaml
 
-from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.reasoning.citation_generator import QueryProcessor
-from src.nlp.nlp_pipeline import NLPPipeline, FactConverter
-from src.storage.graph_visualizer import GraphVisualizer
+from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.storage.graph_connection import GraphConnection
 from src.storage.graph_query import GraphQuery
+from src.storage.graph_visualizer import GraphVisualizer
 
 
 def _make_graph_connection() -> GraphConnection:
     return GraphConnection(
-        uri=os.environ.get('NEO4J_URI', 'bolt://localhost:7687'),
-        user=os.environ.get('NEO4J_USER', 'neo4j'),
-        password=os.environ.get('NEO4J_PASSWORD', 'password'),
-        database=os.environ.get('NEO4J_DATABASE', 'neo4j')
+        uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        user=os.environ.get("NEO4J_USER", "neo4j"),
+        password=os.environ.get("NEO4J_PASSWORD", "password"),
+        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
     )
 
+
+def _initialize_components():
+    graph_conn = _make_graph_connection()
+    connected = graph_conn.connect()
+    if connected:
+        graph_query = GraphQuery(graph_conn)
+    else:
+        graph_query = None
+
+    reasoner = CompatibilityReasoner(graph_query=graph_query)
+    query_processor = QueryProcessor(reasoner)
+
+    return graph_conn, graph_query, reasoner, query_processor
+
+
 # Initialize components
-graph_conn = _make_graph_connection()
-connected = graph_conn.connect()
-if connected:
-    graph_query = GraphQuery(graph_conn)
-else:
-    graph_query = None
-reasoner = CompatibilityReasoner(graph_query=graph_query)
-query_processor = QueryProcessor(reasoner)
+graph_conn, graph_query, reasoner, query_processor = _initialize_components()
+connected = graph_query is not None
 
 
 @click.group()
-@click.version_option(version='1.0.0')
+@click.version_option(version="1.0.0")
 def cli():
     """ActiveGate Compatibility Intelligence CLI.
-    
+
     Check if your ActiveGate upgrade path is compatible with your environment.
     """
     pass
 
 
 @cli.command()
-@click.option('--current', '-c', required=True, help='Current ActiveGate version (e.g., 1.330)')
-@click.option('--target', '-t', required=True, help='Target ActiveGate version (e.g., 1.335)')
-@click.option('--os-family', '-o', default=None, help='Operating system family (windows, linux)')
-@click.option('--os-version', default=None, help='Operating system version (e.g., 2022, 8)')
-@click.option('--managed', '-m', default=None, help='Dynatrace Managed cluster version')
-@click.option('--extensions', '-e', multiple=True, help='Extensions to check (format: ext-id:version)')
-@click.option('--json', 'json_output', is_flag=True, help='Output as JSON')
+@click.option(
+    "--current", "-c", required=True, help="Current ActiveGate version (e.g., 1.330)"
+)
+@click.option(
+    "--target", "-t", required=True, help="Target ActiveGate version (e.g., 1.335)"
+)
+@click.option(
+    "--os-family", "-o", default=None, help="Operating system family (windows, linux)"
+)
+@click.option(
+    "--os-version", default=None, help="Operating system version (e.g., 2022, 8)"
+)
+@click.option("--managed", "-m", default=None, help="Dynatrace Managed cluster version")
+@click.option(
+    "--extensions",
+    "-e",
+    multiple=True,
+    help="Extensions to check (format: ext-id:version)",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def check(current, target, os_family, os_version, managed, extensions, json_output):
     """Check ActiveGate upgrade compatibility.
-    
+
     Examples:
         agi check -c 1.330 -t 1.335
         agi check -c 1.330 -t 1.335 -o linux -8
@@ -72,10 +88,10 @@ def check(current, target, os_family, os_version, managed, extensions, json_outp
     # Parse extensions
     ext_list = []
     for ext in extensions:
-        if ':' in ext:
-            ext_id, ext_ver = ext.split(':', 1)
-            ext_list.append({'id': ext_id, 'version': ext_ver})
-    
+        if ":" in ext:
+            ext_id, ext_ver = ext.split(":", 1)
+            ext_list.append({"id": ext_id, "version": ext_ver})
+
     # Run compatibility check
     result = reasoner.check_upgrade_compatibility(
         current_version=current,
@@ -83,9 +99,9 @@ def check(current, target, os_family, os_version, managed, extensions, json_outp
         os_family=os_family,
         os_version=os_version,
         managed_cluster_version=managed,
-        extensions=ext_list if ext_list else None
+        extensions=ext_list if ext_list else None,
     )
-    
+
     # Output results
     if json_output:
         click.echo(json.dumps(result.to_dict(), indent=2))
@@ -95,37 +111,38 @@ def check(current, target, os_family, os_version, managed, extensions, json_outp
 
 
 @cli.command()
-@click.argument('query')
-@click.option('--json', 'json_output', is_flag=True, help='Output as JSON')
+@click.argument("query")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def ask(query, json_output):
     """Ask a natural language question about compatibility.
-    
+
     Examples:
         agi ask "Can I upgrade from 1.330 to 1.335?"
         agi ask "Is extension custom-logging compatible with AG 1.335?"
     """
     # Process the query
     parsed = query_processor.process_query(query)
-    
+
     # Extract version from query
-    versions = parsed.get('versions_found', [])
-    
+    versions = parsed.get("versions_found", [])
+
     if len(versions) >= 2:
         current = versions[0]
         target = versions[1]
     elif len(versions) == 1:
-        current = '1.330'  # Default
+        current = "1.330"  # Default
         target = versions[0]
     else:
-        click.echo("Could not detect version in query. Please use format: 'Can I upgrade from X to Y?'")
+        click.echo(
+            "Could not detect version in query. Please use format: 'Can I upgrade from X to Y?'"
+        )
         return
-    
+
     # Run compatibility check
     result = reasoner.check_upgrade_compatibility(
-        current_version=current,
-        target_version=target
+        current_version=current, target_version=target
     )
-    
+
     # Output results
     if json_output:
         click.echo(json.dumps(result.to_dict(), indent=2))
@@ -137,13 +154,13 @@ def ask(query, json_output):
 
 
 @cli.command()
-@click.argument('file_path', type=click.Path(exists=True))
-@click.option('--json', 'json_output', is_flag=True, help='Output as JSON')
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def check_file(file_path, json_output):
     """Check compatibility using a configuration file.
-    
+
     The file should be in YAML or JSON format with the following structure:
-    
+
     Example YAML:
         current_activegate_version: 1.330
         target_activegate_version: 1.335
@@ -158,12 +175,12 @@ def check_file(file_path, json_output):
     """
     # Load configuration file
     file_path = Path(file_path)
-    
+
     try:
-        with open(file_path, 'r') as f:
-            if file_path.suffix in ['.yaml', '.yml']:
+        with open(file_path, "r") as f:
+            if file_path.suffix in [".yaml", ".yml"]:
                 config = yaml.safe_load(f)
-            elif file_path.suffix == '.json':
+            elif file_path.suffix == ".json":
                 config = json.load(f)
             else:
                 click.echo("Error: File must be YAML or JSON format")
@@ -171,20 +188,20 @@ def check_file(file_path, json_output):
     except Exception as e:
         click.echo(f"Error reading file: {e}")
         return
-    
+
     # Parse structured input
     params = query_processor.parse_structured_input(config)
-    
+
     # Run compatibility check
     result = reasoner.check_upgrade_compatibility(
-        current_version=params['current_version'],
-        target_version=params['target_version'],
-        os_family=params.get('os_family'),
-        os_version=params.get('os_version'),
-        managed_cluster_version=params.get('managed_cluster_version'),
-        extensions=params.get('extensions')
+        current_version=params["current_version"],
+        target_version=params["target_version"],
+        os_family=params.get("os_family"),
+        os_version=params.get("os_version"),
+        managed_cluster_version=params.get("managed_cluster_version"),
+        extensions=params.get("extensions"),
     )
-    
+
     # Output results
     if json_output:
         click.echo(json.dumps(result.to_dict(), indent=2))
@@ -210,8 +227,12 @@ def status():
         click.echo("Neo4j Status: Connected")
         try:
             stats = graph_conn.get_stats()
-            click.echo(f"ActiveGate versions: {stats.get('ActiveGateVersion_count', 0)}")
-            click.echo(f"Managed cluster versions: {stats.get('ManagedClusterVersion_count', 0)}")
+            click.echo(
+                f"ActiveGate versions: {stats.get('ActiveGateVersion_count', 0)}"
+            )
+            click.echo(
+                f"Managed cluster versions: {stats.get('ManagedClusterVersion_count', 0)}"
+            )
             click.echo(f"OS versions: {stats.get('OSVersion_count', 0)}")
             click.echo(f"Extensions: {stats.get('Extension_count', 0)}")
             click.echo(f"Total relationships: {stats.get('relationships_count', 0)}")
@@ -219,7 +240,9 @@ def status():
             click.echo(f"Failed to query Neo4j stats: {e}")
     else:
         click.echo("Neo4j Status: Disconnected")
-        click.echo("  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE and ensure Neo4j is running.")
+        click.echo(
+            "  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE and ensure Neo4j is running."
+        )
 
     click.echo("")
     click.echo("Known deprecated versions:")
@@ -234,16 +257,28 @@ def status():
 
 
 @cli.command()
-@click.option('--versions', '-v', default=None, help='Comma-separated list of ActiveGate versions to visualize (e.g., "1.330,1.335")')
-@click.option('--format', '-f', 'output_format', default='mermaid', type=click.Choice(['mermaid', 'flowchart', 'text']), help='Output format')
-@click.option('--limit', '-l', default=50, help='Maximum number of versions to include')
+@click.option(
+    "--versions",
+    "-v",
+    default=None,
+    help='Comma-separated list of ActiveGate versions to visualize (e.g., "1.330,1.335")',
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    default="mermaid",
+    type=click.Choice(["mermaid", "flowchart", "text"]),
+    help="Output format",
+)
+@click.option("--limit", "-l", default=50, help="Maximum number of versions to include")
 def visualize(versions, output_format, limit):
     """Visualize the ActiveGate compatibility graph.
-    
+
     This command queries the Neo4j graph database and generates a visualization
     showing the relationships between ActiveGate versions, Managed clusters,
     OS versions, and extensions.
-    
+
     Examples:
         agi visualize
         agi visualize --format text
@@ -252,21 +287,21 @@ def visualize(versions, output_format, limit):
     # Parse versions if provided
     version_list = None
     if versions:
-        version_list = [v.strip() for v in versions.split(',')]
-    
+        version_list = [v.strip() for v in versions.split(",")]
+
     try:
         visualizer = GraphVisualizer()
         data = visualizer.get_graph_data(activegate_versions=version_list, limit=limit)
-        
-        if output_format == 'mermaid':
+
+        if output_format == "mermaid":
             output = visualizer.to_mermaid(data)
-        elif output_format == 'flowchart':
+        elif output_format == "flowchart":
             output = visualizer.to_mermaid_flowchart(data)
-        elif output_format == 'text':
+        elif output_format == "text":
             output = visualizer.to_text_diagram(data)
-        
+
         click.echo(output)
-        
+
     except Exception as e:
         click.echo(f"Error generating visualization: {e}")
         click.echo("")
@@ -276,30 +311,30 @@ def visualize(versions, output_format, limit):
 
 # Create a template config file
 @cli.command()
-@click.argument('output_path', type=click.Path())
+@click.argument("output_path", type=click.Path())
 def init_config(output_path):
     """Create a template configuration file."""
     template = {
-        'current_activegate_version': '1.330',
-        'target_activegate_version': '1.335',
-        'os_family': 'linux',
-        'os_version': '8',
-        'managed_cluster_version': '1.335',
-        'extensions': [
-            {'id': 'custom-logging', 'version': '2.0'},
-            {'id': 'custom-metrics', 'version': '1.5'}
-        ]
+        "current_activegate_version": "1.330",
+        "target_activegate_version": "1.335",
+        "os_family": "linux",
+        "os_version": "8",
+        "managed_cluster_version": "1.335",
+        "extensions": [
+            {"id": "custom-logging", "version": "2.0"},
+            {"id": "custom-metrics", "version": "1.5"},
+        ],
     }
-    
+
     output_path = Path(output_path)
-    
+
     try:
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             yaml.dump(template, f, default_flow_style=False)
         click.echo(f"Template configuration created at: {output_path}")
     except Exception as e:
         click.echo(f"Error creating file: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()
