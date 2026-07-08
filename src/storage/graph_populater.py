@@ -263,6 +263,11 @@ class GraphPopulator:
 
     def _ensure_node(self, label: str, key: Optional[str], value: str) -> bool:
         try:
+            if label == "ActiveGateVersion" and not re.match(
+                r"^1\.\d+(?:\.\d+)?$", str(value).strip()
+            ):
+                return False
+
             if label == "OSVersion":
                 os_properties = self._parse_os_properties(value)
                 if os_properties is None:
