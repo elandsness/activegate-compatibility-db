@@ -274,12 +274,14 @@ def ingest_data():
                 source_url=doc.get("url", ""),
                 source_title=doc.get("title", "Document"),
             )
-            doc_facts = len(result.compatibility_statements)
-            facts_extracted += doc_facts
-            logger.info(f"Extracted {doc_facts} facts from document")
 
             # Convert to facts and store in graph
             facts = FactConverter.convert_to_facts(result)
+            doc_facts = len(facts)
+            facts_extracted += doc_facts
+            logger.info(
+                f"Extracted {len(result.compatibility_statements)} compatibility statements and generated {doc_facts} graph facts"
+            )
             graph_populator.populate_from_facts(facts)
             logger.info(f"Stored {len(facts)} facts in graph")
 
