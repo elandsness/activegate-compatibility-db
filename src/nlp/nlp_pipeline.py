@@ -299,6 +299,93 @@ class FactConverter:
             )
             facts.append(fact)
 
+        # Convert OS entities into support facts for ActiveGate releases.
+        activegate_version = FactConverter._extract_activegate_version(
+            extraction_result.source_title, extraction_result.source_url
+        )
+        if activegate_version:
+            facts.extend(
+                FactConverter._build_os_support_facts(
+                    extraction_result, activegate_version
+                )
+            )
+
+        return facts
+
+    @staticmethod
+    def _extract_activegate_version(
+        source_title: str, source_url: str
+    ) -> Optional[str]:
+        """Extract ActiveGate version from source metadata."""
+        title_match = re.search(
+            r"activegate\s+(\d+\.\d+(?:\.\d+)?)", source_title, re.IGNORECASE
+        )
+        if title_match:
+            return title_match.group(1)
+
+        url_match = re.search(r"sprint-(\d+)", source_url, re.IGNORECASE)
+        if url_match:
+            return f"1.{url_match.group(1)}"
+
+        return None
+
+    @staticmethod
+    def _normalize_os_versions(version_value: str) -> List[str]:
+        """Normalize OS version strings into individual version tokens."""
+        if not version_value:
+            return []
+
+        versions = []
+        for chunk in version_value.split(","):
+            token = chunk.strip()
+            if not token:
+                continue
+            if "-" in token:
+                bounds = [part.strip() for part in token.split("-", 1)]
+                versions.extend([bound for bound in bounds if bound])
+            else:
+                versions.append(token)
+        return versions
+
+    @staticmethod
+    def _build_os_support_facts(
+        extraction_result: ExtractionResult, activegate_version: str
+    ) -> List[ExtractedFact]:
+        """Create compatibility facts from extracted OS entities."""
+        os_entities = extraction_result.entities.get("os_versions", [])
+        facts = []
+        seen = set()
+
+        for os_entry in os_entities:
+            family = str(os_entry.get("family", "os")).strip().title()
+            versions = FactConverter._normalize_os_versions(
+                str(os_entry.get("version", "")).strip()
+            )
+
+            for version in versions:
+                if not re.match(r"^\d+(?:\.\d+){0,2}$", version):
+                    continue
+
+                object_value = f"{family} {version}"
+                signature = (activegate_version, object_value.lower())
+                if signature in seen:
+                    continue
+                seen.add(signature)
+
+                facts.append(
+                    ExtractedFact(
+                        fact_type="compatibility_statement",
+                        subject=activegate_version,
+                        predicate="SUPPORTED_BY",
+                        object_val=object_value,
+                        confidence=0.45,
+                        source_url=extraction_result.source_url,
+                        source_text=os_entry.get("raw", object_value),
+                        subject_type="activegate",
+                        object_type="os",
+                    )
+                )
+
         return facts
 
     @staticmethod
