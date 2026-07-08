@@ -15,6 +15,7 @@ on:
 env:
   PYTHON_VERSION: '3.13'
   NEO4J_VERSION: '5.14'
+  NEO4J_PASSWORD: 'testpassword1'
 
 jobs:
   # ============================================
@@ -62,7 +63,7 @@ jobs:
       neo4j:
         image: neo4j:5.14-community
         env:
-          NEO4J_AUTH: neo4j/test
+          NEO4J_AUTH: neo4j/testpassword1
         ports:
           - 7474:7474
           - 7687:7687
