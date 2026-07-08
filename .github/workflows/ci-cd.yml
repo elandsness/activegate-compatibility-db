@@ -60,7 +60,7 @@ jobs:
 
     services:
       neo4j:
-        image: neo4j:${{ env.NEO4J_VERSION }}-community
+        image: neo4j:5.14-community
         env:
           NEO4J_AUTH: neo4j/test
         ports:
