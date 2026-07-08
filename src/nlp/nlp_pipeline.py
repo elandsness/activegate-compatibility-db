@@ -222,6 +222,13 @@ class FactConverter:
     """Convert extraction results into graph-ready facts."""
 
     @staticmethod
+    def _is_activegate_version(value: Optional[str]) -> bool:
+        """Return true when value looks like an ActiveGate version (1.x)."""
+        if not value:
+            return False
+        return bool(re.match(r"^1\.\d+(?:\.\d+)?$", value.strip()))
+
+    @staticmethod
     def convert_to_facts(extraction_result: ExtractionResult) -> List[ExtractedFact]:
         """Convert extraction result into a list of facts for graph storage."""
         facts = []
@@ -247,6 +254,18 @@ class FactConverter:
                 adjusted_conf = min(1.0, adjusted_conf + 0.05)
 
             subj_val = stmt["subject_version"] or "unknown"
+
+            # Keep ActiveGate subjects tied to release versions only.
+            if subject_type == "activegate":
+                if FactConverter._is_activegate_version(stmt.get("subject_version")):
+                    subj_val = str(stmt.get("subject_version")).strip()
+                else:
+                    fallback_version = FactConverter._extract_activegate_version(
+                        extraction_result.source_title, extraction_result.source_url
+                    )
+                    if not FactConverter._is_activegate_version(fallback_version):
+                        continue
+                    subj_val = str(fallback_version).strip()
 
             # If this is an extension-related statement try to resolve the extension name from extracted entities
             if subject_type == "extension":
