@@ -1,0 +1,4 @@
+# This directory stores scraped release data
+# Files:
+#   - releases.json: Raw scraped release notes
+#   - processed/: Processed and normalized data
