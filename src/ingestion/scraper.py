@@ -156,9 +156,7 @@ class ReleaseNotesScraper:
         if url_match:
             return f"1.{url_match.group(1)}"
 
-        title_match = re.search(
-            r"ActiveGate\s+(\d+\.\d+)", content_text, re.IGNORECASE
-        )
+        title_match = re.search(r"ActiveGate\s+(\d+\.\d+)", content_text, re.IGNORECASE)
         if title_match:
             return title_match.group(1)
 
