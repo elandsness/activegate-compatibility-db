@@ -1,3 +1,3 @@
 """CLI module for ActiveGate Compatibility Intelligence."""
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"
