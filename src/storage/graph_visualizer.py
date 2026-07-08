@@ -94,9 +94,7 @@ class GraphVisualizer:
 
         # Fetch relationships for the ActiveGate versions
         if nodes["ActiveGateVersion"]:
-            versions_str = ", ".join(
-                [f"'{v}'" for v in nodes["ActiveGateVersion"]]
-            )
+            versions_str = ", ".join([f"'{v}'" for v in nodes["ActiveGateVersion"]])
 
             # Fetch REQUIRES relationships (to ManagedClusterVersion)
             requires_query = f"""
@@ -234,12 +232,8 @@ class GraphVisualizer:
 
         # Add relationships
         for rel in data.relationships:
-            source_id = self._sanitize_id(
-                f"{rel['source_type']}_{rel['source']}"
-            )
-            target_id = self._sanitize_id(
-                f"{rel['target_type']}_{rel['target']}"
-            )
+            source_id = self._sanitize_id(f"{rel['source_type']}_{rel['source']}")
+            target_id = self._sanitize_id(f"{rel['target_type']}_{rel['target']}")
 
             # Add relationship label
             rel_label = rel["relationship"]
@@ -293,17 +287,13 @@ class GraphVisualizer:
         # Create subgraph for ActiveGate versions
         lines.append("    subgraph ActiveGates")
         for version in ag_versions:
-            lines.append(
-                f'        AG_{version.replace(".", "_")}["{version}"]'
-            )
+            lines.append(f'        AG_{version.replace(".", "_")}["{version}"]')
         lines.append("    end")
 
         # Create subgraph for Managed Cluster versions
         lines.append("    subgraph ManagedClusters")
         for version in mc_versions:
-            lines.append(
-                f'        MC_{version.replace(".", "_")}["{version}"]'
-            )
+            lines.append(f'        MC_{version.replace(".", "_")}["{version}"]')
         lines.append("    end")
 
         lines.append("")
