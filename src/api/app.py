@@ -318,7 +318,12 @@ def get_versions():
     graph_conn = _make_graph_connection()
     try:
         graph_conn.connect()
-        query = "MATCH (ag:ActiveGateVersion) RETURN ag.version as version ORDER BY ag.version"
+        query = """
+        MATCH (ag:ActiveGateVersion)
+        WHERE coalesce(ag.is_release, false) = true
+        RETURN ag.version as version
+        ORDER BY ag.version
+        """
         result = graph_conn.execute(query)
         versions = [record["version"] for record in result]
         return jsonify({"versions": versions})

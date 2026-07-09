@@ -64,6 +64,7 @@ class GraphPopulator:
         MERGE (ag:ActiveGateVersion {version: $version})
         SET ag.title = $title,
             ag.source_url = $source_url,
+            ag.is_release = true,
             ag.last_seen = datetime()
         RETURN ag
         """
