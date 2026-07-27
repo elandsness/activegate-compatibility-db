@@ -227,6 +227,19 @@
       // Use relative URL to go through Nginx proxy
       const API_URL = '/api';
 
+      async function parseApiResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+
+        if (contentType.includes('application/json')) {
+          return await response.json();
+        }
+
+        const text = await response.text();
+        return {
+          error: `Unexpected ${response.status} response: ${text.slice(0, 200)}`,
+        };
+      }
+
       function App() {
         const [activeTab, setActiveTab] = useState('ingest');
         const [versions, setVersions] = useState([]);
@@ -240,15 +253,15 @@
         const fetchData = async () => {
           try {
             const vRes = await fetch(`${API_URL}/data/versions`);
-            const vData = await vRes.json();
+            const vData = await parseApiResponse(vRes);
             setVersions(vData.versions || []);
 
             const rRes = await fetch(`${API_URL}/data/relationships`);
-            const rData = await rRes.json();
+            const rData = await parseApiResponse(rRes);
             setRelationships(rData.relationships || []);
 
             const hRes = await fetch(`${API_URL}/data/hub-summary`);
-            const hData = await hRes.json();
+            const hData = await parseApiResponse(hRes);
             setHubSummary(hData || {});
           } catch (e) {
             console.error('Failed to fetch data:', e);
@@ -331,7 +344,11 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ message: userMessage }),
             });
-            const data = await response.json();
+            const data = await parseApiResponse(response);
+
+            if (!response.ok || data.error) {
+              throw new Error(data.error || `Request failed with ${response.status}`);
+            }
 
             setMessages((prev) => [
               ...prev,
@@ -346,7 +363,7 @@
             setMessages((prev) => [
               ...prev,
               {
-                text: 'Sorry, I encountered an error. Make sure the API is running.',
+                text: `Sorry, I encountered an error: ${e.message}`,
                 user: false,
               },
             ]);
@@ -530,9 +547,17 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-            const data = await response.json();
-            setResult(data);
-            onDataChange();
+            const data = await parseApiResponse(response);
+
+            if (!response.ok || data.error) {
+              setResult({
+                error:
+                  data.error || `Ingestion failed with HTTP ${response.status}`,
+              });
+            } else {
+              setResult(data);
+              onDataChange();
+            }
           } catch (e) {
             setResult({ error: String(e) });
           }
