@@ -304,6 +304,56 @@ def test_integration():
     print(output)
 
 
+def test_query_processor_requires_full_context_before_decision():
+    """Ensure natural-language chat does not return a decision until context is complete."""
+    reasoner = CompatibilityReasoner()
+    processor = QueryProcessor(reasoner)
+
+    parsed = processor.process_query("Can I upgrade from 1.330 to 1.335?")
+
+    assert parsed["ready_for_decision"] is False
+    assert "current_activegate_version" not in parsed["missing_fields"]
+    assert "target_activegate_version" not in parsed["missing_fields"]
+    assert "os_family" in parsed["missing_fields"]
+    assert "os_version" in parsed["missing_fields"]
+    assert "managed_cluster_version" in parsed["missing_fields"]
+    assert "extensions" in parsed["missing_fields"]
+
+
+def test_query_processor_marks_ready_when_all_required_context_provided():
+    """Ensure query parsing can complete all required fields and become decision-ready."""
+    reasoner = CompatibilityReasoner()
+    processor = QueryProcessor(reasoner)
+
+    parsed = processor.process_query(
+        "current activegate version: 1.330, desired activegate version: 1.335, "
+        "os: linux 8, managed cluster version: 1.335, extensions: custom-ext:2.0"
+    )
+
+    assert parsed["ready_for_decision"] is True
+    assert parsed["missing_fields"] == []
+    assert parsed["context"]["os_family"] == "linux"
+    assert parsed["context"]["os_version"] == "8"
+    assert parsed["context"]["current_activegate_version"] == "1.330"
+    assert parsed["context"]["target_activegate_version"] == "1.335"
+    assert parsed["context"]["managed_cluster_version"] == "1.335"
+    assert parsed["context"]["cluster_version"] == "1.335"
+    assert parsed["context"]["extensions"] == [{"id": "custom-ext", "version": "2.0"}]
+
+
+def test_query_processor_follow_up_is_one_field_at_a_time():
+    """Ensure follow-up prompt requests only the next missing field."""
+    reasoner = CompatibilityReasoner()
+    processor = QueryProcessor(reasoner)
+
+    parsed = processor.process_query("Can I upgrade from 1.330 to 1.335?")
+    prompt = parsed["follow_up_prompt"]
+
+    assert "Please provide:" in prompt
+    assert "Managed Cluster version" in prompt
+    assert "OS family" not in prompt
+
+
 if __name__ == "__main__":
     test_compatibility_reasoner()
     test_semantic_search()

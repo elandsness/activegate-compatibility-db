@@ -346,12 +346,13 @@
       function ChatTab() {
         const [messages, setMessages] = useState([
           {
-            text: 'Hello! I can help you check ActiveGate upgrade compatibility. Ask me something like "Can I upgrade from 1.330 to 1.335?"',
+            text: 'Hello! I can help with ActiveGate upgrade decisions. I will first collect all required details (cluster version, OS family/version, current ActiveGate, desired ActiveGate, Managed Cluster version, and installed extensions with versions) before returning GO/NO-GO.',
             user: false,
           },
         ]);
         const [input, setInput] = useState('');
         const [loading, setLoading] = useState(false);
+        const [conversationContext, setConversationContext] = useState({});
         const messagesEndRef = useRef(null);
 
         const scrollToBottom = () => {
@@ -372,12 +373,16 @@
             const response = await fetch(`${API_URL}/chat`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: userMessage }),
+              body: JSON.stringify({ message: userMessage, context: conversationContext }),
             });
             const data = await parseApiResponse(response);
 
             if (!response.ok || data.error) {
               throw new Error(data.error || `Request failed with ${response.status}`);
+            }
+
+            if (data.collected_context) {
+              setConversationContext(data.collected_context);
             }
 
             setMessages((prev) => [
