@@ -216,6 +216,30 @@
         padding: 20px;
         color: #888;
       }
+      .progress-track {
+        margin-top: 14px;
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: #24243d;
+        overflow: hidden;
+        border: 1px solid #3f3f60;
+      }
+      .progress-bar {
+        width: 35%;
+        height: 100%;
+        background: linear-gradient(90deg, #00d4ff, #59e0ff);
+        border-radius: 999px;
+        animation: ingest-progress 1.2s ease-in-out infinite;
+      }
+      @keyframes ingest-progress {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(290%);
+        }
+      }
     </style>
   </head>
   <body>
@@ -226,6 +250,19 @@
 
       // Use relative URL to go through Nginx proxy
       const API_URL = '/api';
+
+      async function parseApiResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+
+        if (contentType.includes('application/json')) {
+          return await response.json();
+        }
+
+        const text = await response.text();
+        return {
+          error: `Unexpected ${response.status} response: ${text.slice(0, 200)}`,
+        };
+      }
 
       function App() {
         const [activeTab, setActiveTab] = useState('ingest');
@@ -240,15 +277,15 @@
         const fetchData = async () => {
           try {
             const vRes = await fetch(`${API_URL}/data/versions`);
-            const vData = await vRes.json();
+            const vData = await parseApiResponse(vRes);
             setVersions(vData.versions || []);
 
             const rRes = await fetch(`${API_URL}/data/relationships`);
-            const rData = await rRes.json();
+            const rData = await parseApiResponse(rRes);
             setRelationships(rData.relationships || []);
 
             const hRes = await fetch(`${API_URL}/data/hub-summary`);
-            const hData = await hRes.json();
+            const hData = await parseApiResponse(hRes);
             setHubSummary(hData || {});
           } catch (e) {
             console.error('Failed to fetch data:', e);
@@ -331,7 +368,11 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ message: userMessage }),
             });
-            const data = await response.json();
+            const data = await parseApiResponse(response);
+
+            if (!response.ok || data.error) {
+              throw new Error(data.error || `Request failed with ${response.status}`);
+            }
 
             setMessages((prev) => [
               ...prev,
@@ -346,7 +387,7 @@
             setMessages((prev) => [
               ...prev,
               {
-                text: 'Sorry, I encountered an error. Make sure the API is running.',
+                text: `Sorry, I encountered an error: ${e.message}`,
                 user: false,
               },
             ]);
@@ -530,9 +571,17 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-            const data = await response.json();
-            setResult(data);
-            onDataChange();
+            const data = await parseApiResponse(response);
+
+            if (!response.ok || data.error) {
+              setResult({
+                error:
+                  data.error || `Ingestion failed with HTTP ${response.status}`,
+              });
+            } else {
+              setResult(data);
+              onDataChange();
+            }
           } catch (e) {
             setResult({ error: String(e) });
           }
@@ -563,6 +612,17 @@
             >
               {loading ? '⏳ Importing...' : '✓ Import All (Releases + Hub + EOS)'}
             </button>
+
+            {loading && (
+              <div style={{ marginTop: '10px' }}>
+                <div style={{ color: '#9ddfff', fontSize: '0.88rem' }}>
+                  Import in progress. This can take around 45-60 seconds.
+                </div>
+                <div className="progress-track" role="progressbar" aria-label="Import progress">
+                  <div className="progress-bar" />
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: '20px' }}>
               <button
