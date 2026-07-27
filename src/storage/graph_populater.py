@@ -77,6 +77,48 @@ class GraphPopulator:
             logger.error(f"Error ensuring ActiveGate release node: {e}")
             return False
 
+    def ensure_managed_release_node(
+        self,
+        version: str,
+        title: str,
+        source_url: str,
+        rollout_start: Optional[str] = None,
+        updated_on: Optional[str] = None,
+    ) -> bool:
+        """Ensure a ManagedClusterVersion release node exists in Neo4j."""
+        if not self.graph_conn.driver:
+            if not self.graph_conn.connect():
+                logger.error(
+                    "Failed to connect to Neo4j: cannot ensure managed release node"
+                )
+                return False
+
+        query = """
+        MERGE (mc:ManagedClusterVersion {version: $version})
+        SET mc.title = $title,
+            mc.source_url = $source_url,
+            mc.is_release = true,
+            mc.rollout_start = coalesce($rollout_start, mc.rollout_start),
+            mc.updated_on = coalesce($updated_on, mc.updated_on),
+            mc.last_seen = datetime()
+        RETURN mc
+        """
+        try:
+            result = self.graph_conn.execute(
+                query,
+                {
+                    "version": version,
+                    "title": title,
+                    "source_url": source_url,
+                    "rollout_start": rollout_start,
+                    "updated_on": updated_on,
+                },
+            )
+            return result is not None
+        except Exception as e:
+            logger.error(f"Error ensuring Managed release node: {e}")
+            return False
+
     def insert_fact(self, fact: ExtractedFact) -> bool:
         """Insert a single fact into the graph."""
         try:

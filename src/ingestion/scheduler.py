@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from src.ingestion.eos_scraper import EndOfSupportScraper
 from src.ingestion.hub_scraper import HubExtensionsScraper
+from src.ingestion.managed_scraper import ManagedReleaseNotesScraper
 from src.ingestion.scraper import ReleaseNotesScraper
 
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,12 @@ def run_weekly_ingestion():
     extensions = hub_scraper.scrape_extensions()
     with open("data/extensions.json", "w") as f:
         json.dump(extensions, f, indent=2)
+
+    # Scrape managed release notes
+    managed_scraper = ManagedReleaseNotesScraper()
+    managed_releases = managed_scraper.scrape_release_notes()
+    with open("data/managed_releases.json", "w") as f:
+        json.dump(managed_releases, f, indent=2)
 
     logger.info("Weekly ingestion completed")
 
