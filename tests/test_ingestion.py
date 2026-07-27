@@ -6,6 +6,7 @@ Tests that scrapers can be imported and initialized.
 
 from src.ingestion.eos_scraper import EndOfSupportScraper
 from src.ingestion.hub_scraper import HubExtensionsScraper
+from src.ingestion.managed_scraper import ManagedReleaseNotesScraper
 from src.ingestion.scheduler import run_weekly_ingestion
 from src.ingestion.scraper import ReleaseNotesScraper
 
@@ -41,6 +42,16 @@ def test_hub_scraper():
     print("✓ HubExtensionsScraper initialized")
 
 
+def test_managed_scraper():
+    """Test ManagedReleaseNotesScraper can be initialized."""
+    print("\n=== Testing ManagedReleaseNotesScraper ===")
+
+    scraper = ManagedReleaseNotesScraper()
+    assert scraper is not None
+
+    print("✓ ManagedReleaseNotesScraper initialized")
+
+
 def test_scheduler():
     """Test scheduler function exists."""
     print("\n=== Testing Scheduler ===")
@@ -58,11 +69,13 @@ def test_integration():
     scraper = ReleaseNotesScraper()
     eos_scraper = EndOfSupportScraper()
     hub_scraper = HubExtensionsScraper()
+    managed_scraper = ManagedReleaseNotesScraper()
 
     # Verify all scrapers can be initialized
     assert scraper is not None
     assert eos_scraper is not None
     assert hub_scraper is not None
+    assert managed_scraper is not None
 
     # Test scheduler function exists
     assert callable(run_weekly_ingestion)
@@ -79,6 +92,7 @@ if __name__ == "__main__":
         test_release_notes_scraper,
         test_eos_scraper,
         test_hub_scraper,
+        test_managed_scraper,
         test_scheduler,
         test_integration,
     ]

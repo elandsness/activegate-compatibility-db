@@ -267,6 +267,7 @@
       function App() {
         const [activeTab, setActiveTab] = useState('ingest');
         const [versions, setVersions] = useState([]);
+        const [managedVersions, setManagedVersions] = useState([]);
         const [relationships, setRelationships] = useState([]);
         const [hubSummary, setHubSummary] = useState({});
 
@@ -279,6 +280,10 @@
             const vRes = await fetch(`${API_URL}/data/versions`);
             const vData = await parseApiResponse(vRes);
             setVersions(vData.versions || []);
+
+            const mvRes = await fetch(`${API_URL}/data/managed-versions`);
+            const mvData = await parseApiResponse(mvRes);
+            setManagedVersions(mvData.versions || []);
 
             const rRes = await fetch(`${API_URL}/data/relationships`);
             const rData = await parseApiResponse(rRes);
@@ -328,6 +333,7 @@
             {activeTab === 'data' && (
               <DataTab
                 versions={versions}
+                managedVersions={managedVersions}
                 relationships={relationships}
                 hubSummary={hubSummary}
                 onDataChange={fetchData}
@@ -436,7 +442,7 @@
         );
       }
 
-      function DataTab({ versions, relationships, hubSummary, onDataChange }) {
+      function DataTab({ versions, managedVersions, relationships, hubSummary, onDataChange }) {
         const coverageStatus = hubSummary.status || 'NO_DATA';
 
         return (
@@ -445,6 +451,10 @@
               <div className="stat-card">
                 <h3>{versions.length}</h3>
                 <p>ActiveGate Versions</p>
+              </div>
+              <div className="stat-card">
+                <h3>{managedVersions.length}</h3>
+                <p>Managed Versions</p>
               </div>
               <div className="stat-card">
                 <h3>{relationships.reduce((sum, r) => sum + r.count, 0)}</h3>
@@ -534,6 +544,23 @@
             </div>
 
             <h3 style={{ marginTop: '30px', marginBottom: '15px' }}>
+              Managed Versions
+            </h3>
+            <div className="data-list">
+              {managedVersions.length === 0 ? (
+                <p style={{ color: '#888' }}>
+                  No managed versions found. Run Managed or All ingestion.
+                </p>
+              ) : (
+                managedVersions.map((v, i) => (
+                  <div key={i} className="data-item">
+                    <span>{v}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <h3 style={{ marginTop: '30px', marginBottom: '15px' }}>
               Relationship Types
             </h3>
             <div className="data-list">
@@ -592,7 +619,7 @@
           <div className="data-container">
             <h3 style={{ marginBottom: '8px' }}>📥 Import Dataset</h3>
             <p style={{ marginBottom: '18px', color: '#bbb', fontSize: '0.92rem' }}>
-              Runs Releases + Hub + End-of-Support ingestion in one pass.
+              Runs ActiveGate Releases + Managed Releases + Hub + End-of-Support ingestion in one pass.
             </p>
 
             <button
@@ -610,7 +637,7 @@
                 opacity: loading ? 0.5 : 1,
               }}
             >
-              {loading ? '⏳ Importing...' : '✓ Import All (Releases + Hub + EOS)'}
+              {loading ? '⏳ Importing...' : '✓ Import All (ActiveGate + Managed + Hub + EOS)'}
             </button>
 
             {loading && (
@@ -667,6 +694,7 @@
                   }}
                 >
                   <option value="releases">Releases</option>
+                  <option value="managed">Managed Releases</option>
                   <option value="hub">Hub</option>
                   <option value="eos">EOS</option>
                   <option value="url">Custom URL</option>

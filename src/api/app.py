@@ -220,7 +220,7 @@ def check_compatibility():
 def ingest_data():
     """
     Ingest data from various sources.
-    Accepts: {"source": "releases|hub|eos|url", "url": "..."}
+    Accepts: {"source": "all|releases|managed|hub|eos|url", "url": "..."}
     Returns: {"status": "success", "source": "...", "items_scraped": N, "facts_extracted": N}
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -230,6 +230,7 @@ def ingest_data():
         if source == "all":
             from src.ingestion.eos_scraper import EndOfSupportScraper
             from src.ingestion.hub_scraper import HubExtensionsScraper
+            from src.ingestion.managed_scraper import ManagedReleaseNotesScraper
             from src.ingestion.scraper import ReleaseNotesScraper
 
             run_results = []
@@ -257,6 +258,35 @@ def ingest_data():
                     "items_scraped": len(releases),
                     "facts_extracted": release_result["facts_extracted"],
                     "documents": release_result["documents"],
+                }
+            )
+
+            # Managed release notes
+            managed_scraper = ManagedReleaseNotesScraper()
+            managed_releases = managed_scraper.scrape_release_notes()
+            for release in managed_releases:
+                version = release.get("version") or _extract_release_version_from_url(
+                    release.get("url", "")
+                )
+                title = release.get("title") or f"Managed {version}"
+                if version:
+                    graph_populator.ensure_managed_release_node(
+                        version=version,
+                        title=title,
+                        source_url=release.get("url", ""),
+                        rollout_start=release.get("rollout_start"),
+                        updated_on=release.get("updated_on"),
+                    )
+
+            managed_result = _process_documents_with_nlp(managed_releases)
+            total_items += len(managed_releases)
+            total_facts += managed_result["facts_extracted"]
+            run_results.append(
+                {
+                    "source": "managed",
+                    "items_scraped": len(managed_releases),
+                    "facts_extracted": managed_result["facts_extracted"],
+                    "documents": managed_result["documents"],
                 }
             )
 
@@ -327,6 +357,38 @@ def ingest_data():
                 }
             )
 
+        elif source == "managed":
+            from src.ingestion.managed_scraper import ManagedReleaseNotesScraper
+
+            scraper = ManagedReleaseNotesScraper()
+            managed_releases = scraper.scrape_release_notes()
+            logger.info("Managed scraper found %d documents", len(managed_releases))
+
+            for release in managed_releases:
+                version = release.get("version") or _extract_release_version_from_url(
+                    release.get("url", "")
+                )
+                title = release.get("title") or f"Managed {version}"
+                if version:
+                    graph_populator.ensure_managed_release_node(
+                        version=version,
+                        title=title,
+                        source_url=release.get("url", ""),
+                        rollout_start=release.get("rollout_start"),
+                        updated_on=release.get("updated_on"),
+                    )
+
+            processed = _process_documents_with_nlp(managed_releases)
+            return jsonify(
+                {
+                    "status": "success",
+                    "source": source,
+                    "items_scraped": len(managed_releases),
+                    "facts_extracted": processed["facts_extracted"],
+                    "documents": processed["documents"],
+                }
+            )
+
         elif source == "hub":
             from src.ingestion.hub_scraper import HubExtensionsScraper
 
@@ -389,7 +451,7 @@ def ingest_data():
             return (
                 jsonify(
                     {
-                        "error": f"Unknown source: {source}. Use: all, releases, hub, eos, url"
+                        "error": f"Unknown source: {source}. Use: all, releases, managed, hub, eos, url"
                     }
                 ),
                 400,
@@ -411,6 +473,27 @@ def get_versions():
         WHERE coalesce(ag.is_release, false) = true
         RETURN ag.version as version
         ORDER BY ag.version
+        """
+        result = graph_conn.execute(query)
+        versions = [record["version"] for record in result]
+        return jsonify({"versions": versions})
+    except Exception as e:
+        return jsonify({"error": str(e), "versions": []}), 500
+    finally:
+        graph_conn.disconnect()
+
+
+@app.route("/api/data/managed-versions", methods=["GET"])
+def get_managed_versions():
+    """Get all Managed cluster versions in the database."""
+    graph_conn = _make_graph_connection()
+    try:
+        graph_conn.connect()
+        query = """
+        MATCH (mc:ManagedClusterVersion)
+        WHERE coalesce(mc.is_release, false) = true
+        RETURN mc.version as version
+        ORDER BY mc.version
         """
         result = graph_conn.execute(query)
         versions = [record["version"] for record in result]
