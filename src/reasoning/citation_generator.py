@@ -129,7 +129,16 @@ class QueryProcessor:
         self.semantic_search = semantic_search
         self.citation_generator = citation_generator
 
-    def process_query(self, query: str) -> Dict:
+    REQUIRED_CONTEXT_FIELDS = [
+        "current_activegate_version",
+        "target_activegate_version",
+        "managed_cluster_version",
+        "os_family",
+        "os_version",
+        "extensions",
+    ]
+
+    def process_query(self, query: str, context: Optional[Dict] = None) -> Dict:
         """
         Process a natural language query.
 
@@ -157,11 +166,260 @@ class QueryProcessor:
         else:
             query_type = "general_compatibility"
 
+        merged_context = self._build_and_merge_context(query, context)
+        missing_fields = self._get_missing_context_fields(merged_context)
+
         return {
             "query_type": query_type,
             "versions_found": versions,
             "query": query,
+            "context": merged_context,
+            "missing_fields": missing_fields,
+            "ready_for_decision": len(missing_fields) == 0,
+            "follow_up_prompt": self._build_follow_up_prompt(
+                merged_context, missing_fields
+            ),
         }
+
+    def _build_and_merge_context(self, query: str, context: Optional[Dict]) -> Dict:
+        """Extract compatibility context from the query and merge with prior context."""
+        merged = {
+            "cluster_version": None,
+            "os_family": None,
+            "os_version": None,
+            "current_activegate_version": None,
+            "target_activegate_version": None,
+            "managed_cluster_version": None,
+            "extensions": None,
+            "extensions_known": False,
+        }
+
+        if context:
+            merged.update(context)
+
+        extracted = self._extract_context_from_query(query)
+        for key, value in extracted.items():
+            if value is not None:
+                merged[key] = value
+
+        # Treat cluster and managed cluster as aliases unless explicitly set differently.
+        if merged.get("managed_cluster_version") and not merged.get("cluster_version"):
+            merged["cluster_version"] = merged["managed_cluster_version"]
+        if merged.get("cluster_version") and not merged.get("managed_cluster_version"):
+            merged["managed_cluster_version"] = merged["cluster_version"]
+
+        return merged
+
+    def _extract_context_from_query(self, query: str) -> Dict:
+        """Extract required compatibility context from a natural language message."""
+        import re
+
+        result = {
+            "cluster_version": None,
+            "os_family": None,
+            "os_version": None,
+            "current_activegate_version": None,
+            "target_activegate_version": None,
+            "managed_cluster_version": None,
+            "extensions": None,
+            "extensions_known": False,
+        }
+
+        version_pattern = r"(\d+\.\d+(?:\.\d+)*)"
+
+        # ActiveGate current -> target upgrades.
+        from_to = re.search(
+            rf"(?:from|current(?:\s+activegate)?(?:\s+version)?)\s+{version_pattern}.{{0,40}}(?:to|target|desired)\s+{version_pattern}",
+            query,
+        )
+        if from_to:
+            versions = re.findall(version_pattern, from_to.group(0))
+            if len(versions) >= 2:
+                result["current_activegate_version"] = versions[0]
+                result["target_activegate_version"] = versions[1]
+
+        explicit_current = re.search(
+            rf"current(?:\s+activegate)?(?:\s+version)?\s*[:=]?\s*{version_pattern}",
+            query,
+        )
+        if explicit_current:
+            vals = re.findall(version_pattern, explicit_current.group(0))
+            if vals:
+                result["current_activegate_version"] = vals[-1]
+
+        explicit_target = re.search(
+            rf"(?:target|desired)(?:\s+activegate)?(?:\s+version)?\s*[:=]?\s*{version_pattern}",
+            query,
+        )
+        if explicit_target:
+            vals = re.findall(version_pattern, explicit_target.group(0))
+            if vals:
+                result["target_activegate_version"] = vals[-1]
+
+        managed_match = re.search(
+            rf"managed\s+cluster(?:\s+version)?\s*[:=]?\s*{version_pattern}",
+            query,
+        )
+        if managed_match:
+            vals = re.findall(version_pattern, managed_match.group(0))
+            if vals:
+                result["managed_cluster_version"] = vals[-1]
+
+        cluster_match = re.search(
+            rf"(?<!managed\s)cluster(?:\s+version)?\s*[:=]?\s*{version_pattern}",
+            query,
+        )
+        if cluster_match:
+            vals = re.findall(version_pattern, cluster_match.group(0))
+            if vals:
+                result["cluster_version"] = vals[-1]
+
+        os_family = None
+        if "windows" in query:
+            os_family = "windows"
+        elif any(token in query for token in ["linux", "rhel", "centos", "ubuntu"]):
+            os_family = "linux"
+        if os_family:
+            result["os_family"] = os_family
+
+        os_version_patterns = [
+            r"os\s+version\s*[:=]?\s*([a-z0-9\._-]+)",
+            r"windows\s+([0-9]{4}|[0-9]{2}h[0-9])",
+            r"ubuntu\s+([0-9]{2}\.[0-9]{2})",
+            r"rhel\s+([0-9]+(?:\.[0-9]+)?)",
+            r"centos\s+([0-9]+(?:\.[0-9]+)?)",
+            r"linux\s+([0-9]+(?:\.[0-9]+)?)",
+        ]
+        for pattern in os_version_patterns:
+            os_match = re.search(pattern, query)
+            if os_match:
+                result["os_version"] = os_match.group(1)
+                break
+
+        # Extensions can be explicit list or explicit "none installed".
+        if any(
+            phrase in query
+            for phrase in ["no extensions", "none installed", "without extensions"]
+        ):
+            result["extensions"] = []
+            result["extensions_known"] = True
+        else:
+            ext_matches = []
+            explicit_exts_match = re.search(
+                r"extensions?\s*[:=]\s*(.+)$",
+                query,
+            )
+            if explicit_exts_match:
+                ext_segment = explicit_exts_match.group(1)
+                ext_matches = re.findall(
+                    r"([a-z0-9][a-z0-9_-]{1,})\s*[:@]\s*(\d+\.\d+(?:\.\d+)*)",
+                    ext_segment,
+                )
+            else:
+                ext_matches = re.findall(
+                    r"extension\s+([a-z0-9][a-z0-9_-]{1,})\s+(?:version\s*)?(\d+\.\d+(?:\.\d+)*)",
+                    query,
+                )
+
+            if ext_matches:
+                result["extensions"] = [
+                    {"id": ext_id, "version": ext_version}
+                    for ext_id, ext_version in ext_matches
+                ]
+                result["extensions_known"] = True
+
+        # Fallback: if two versions are present and AG versions are still missing.
+        if (
+            not result["current_activegate_version"]
+            or not result["target_activegate_version"]
+        ):
+            all_versions = re.findall(version_pattern, query)
+            if len(all_versions) >= 2:
+                result["current_activegate_version"] = (
+                    result["current_activegate_version"] or all_versions[0]
+                )
+                result["target_activegate_version"] = (
+                    result["target_activegate_version"] or all_versions[1]
+                )
+
+        return result
+
+    def _get_missing_context_fields(self, context: Dict) -> List[str]:
+        """Return missing required fields for a safe compatibility decision."""
+        missing = []
+        for field in self.REQUIRED_CONTEXT_FIELDS:
+            if field == "extensions":
+                if not context.get("extensions_known", False):
+                    missing.append(field)
+                continue
+
+            if not context.get(field):
+                missing.append(field)
+
+        return missing
+
+    def _build_follow_up_prompt(self, context: Dict, missing_fields: List[str]) -> str:
+        """Build interview-style follow-up text when required context is missing."""
+        if not missing_fields:
+            return ""
+
+        field_labels = {
+            "cluster_version": "Cluster version",
+            "os_family": "OS family (Linux or Windows)",
+            "os_version": "OS version",
+            "current_activegate_version": "Current ActiveGate version",
+            "target_activegate_version": "Desired ActiveGate version",
+            "managed_cluster_version": "Managed Cluster version",
+            "extensions": "Installed extensions and versions (or 'none')",
+        }
+
+        known_lines = []
+        if context.get("current_activegate_version"):
+            known_lines.append(
+                f"- Current ActiveGate: {context['current_activegate_version']}"
+            )
+        if context.get("target_activegate_version"):
+            known_lines.append(
+                f"- Desired ActiveGate: {context['target_activegate_version']}"
+            )
+        if context.get("cluster_version"):
+            known_lines.append(f"- Cluster: {context['cluster_version']}")
+        if context.get("managed_cluster_version"):
+            known_lines.append(
+                f"- Managed Cluster: {context['managed_cluster_version']}"
+            )
+        if context.get("os_family"):
+            known_lines.append(f"- OS family: {context['os_family']}")
+        if context.get("os_version"):
+            known_lines.append(f"- OS version: {context['os_version']}")
+        if context.get("extensions_known", False):
+            if context.get("extensions"):
+                ext_text = ", ".join(
+                    f"{ext['id']}:{ext['version']}" for ext in context["extensions"]
+                )
+                known_lines.append(f"- Extensions: {ext_text}")
+            else:
+                known_lines.append("- Extensions: none")
+
+        next_missing_field = missing_fields[0]
+        next_missing_label = field_labels[next_missing_field]
+
+        response_parts = [
+            "I need a few required details before I can return a GO/NO-GO decision.",
+            f"Please provide: {next_missing_label}.",
+        ]
+
+        if known_lines:
+            response_parts.extend(["", "Details I already have:", *known_lines])
+
+        response_parts.extend(
+            [
+                "",
+                "I will ask for the next required field after this one.",
+            ]
+        )
+
+        return "\n".join(response_parts)
 
     def parse_structured_input(self, input_data: Dict) -> Dict:
         """

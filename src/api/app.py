@@ -138,35 +138,44 @@ def chat():
     Accepts: {"message": "Can I upgrade from 1.330 to 1.335?"}
     Returns: {"response": "...", "citations": [...], "status": "GO|NO_GO"}
     """
-    data = request.get_json()
+    data = request.get_json() or {}
     message = data.get("message", "")
+    context = data.get("context", {})
 
     if not message:
         return jsonify({"error": "No message provided"}), 400
 
     # Process the query
-    parsed = query_processor.process_query(message)
-    versions = parsed.get("versions_found", [])
+    parsed = query_processor.process_query(message, context=context)
+    collected_context = parsed.get("context", {})
 
-    if len(versions) >= 2:
-        current = versions[0]
-        target = versions[1]
-    elif len(versions) == 1:
-        current = "1.330"  # Default
-        target = versions[0]
-    else:
+    if not parsed.get("ready_for_decision", False):
         return jsonify(
             {
-                "response": 'Could not detect version in query. Please use format: "Can I upgrade from X to Y?"',
+                "response": parsed.get("follow_up_prompt"),
                 "citations": [],
-                "status": "UNKNOWN",
+                "status": "NEEDS_INFO",
+                "missing_fields": parsed.get("missing_fields", []),
+                "required_fields": query_processor.REQUIRED_CONTEXT_FIELDS,
+                "collected_context": collected_context,
             }
         )
+
+    current = collected_context.get("current_activegate_version")
+    target = collected_context.get("target_activegate_version")
+    os_family = collected_context.get("os_family")
+    os_version = collected_context.get("os_version")
+    managed_cluster_version = collected_context.get("managed_cluster_version")
+    extensions = collected_context.get("extensions") or []
 
     # Run compatibility check, querying the graph when available
     result = reasoner.check_upgrade_compatibility(
         current_version=current,
         target_version=target,
+        os_family=os_family,
+        os_version=os_version,
+        managed_cluster_version=managed_cluster_version,
+        extensions=extensions,
         use_graph=reasoner.graph_query is not None,
     )
 
@@ -180,6 +189,8 @@ def chat():
             "citations": result.citations,
             "status": result.status.value if hasattr(result, "status") else "UNKNOWN",
             "confidence": result.confidence,
+            "collected_context": collected_context,
+            "missing_fields": [],
         }
     )
 
