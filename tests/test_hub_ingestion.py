@@ -1,5 +1,8 @@
 from src.ingestion.hub_scraper import HubExtensionsScraper
-from src.reasoning.compatibility_reasoner import CompatibilityStatus, CompatibilityReasoner
+from src.reasoning.compatibility_reasoner import (
+    CompatibilityReasoner,
+    CompatibilityStatus,
+)
 
 
 class _GraphQueryWithUnknownExtensions:
