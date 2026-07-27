@@ -123,24 +123,26 @@ def ask(query, json_output):
     # Process the query
     parsed = query_processor.process_query(query)
 
-    # Extract version from query
-    versions = parsed.get("versions_found", [])
-
-    if len(versions) >= 2:
-        current = versions[0]
-        target = versions[1]
-    elif len(versions) == 1:
-        current = "1.330"  # Default
-        target = versions[0]
-    else:
-        click.echo(
-            "Could not detect version in query. Please use format: 'Can I upgrade from X to Y?'"
-        )
+    if not parsed.get("ready_for_decision", False):
+        click.echo(parsed.get("follow_up_prompt"))
         return
+
+    context = parsed.get("context", {})
+    current = context.get("current_activegate_version")
+    target = context.get("target_activegate_version")
+    os_family = context.get("os_family")
+    os_version = context.get("os_version")
+    managed = context.get("managed_cluster_version")
+    extensions = context.get("extensions") or []
 
     # Run compatibility check
     result = reasoner.check_upgrade_compatibility(
-        current_version=current, target_version=target
+        current_version=current,
+        target_version=target,
+        os_family=os_family,
+        os_version=os_version,
+        managed_cluster_version=managed,
+        extensions=extensions,
     )
 
     # Output results
