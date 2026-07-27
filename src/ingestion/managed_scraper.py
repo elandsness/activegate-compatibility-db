@@ -72,8 +72,8 @@ class ManagedReleaseNotesScraper:
         patterns = [
             r'"(\/managed\/whats-new\/managed\/sprint-\d+)"',
             r'"(\/whats-new\/managed\/sprint-\d+)"',
-            r'(\/managed\/whats-new\/managed\/sprint-\d+)',
-            r'(\/whats-new\/managed\/sprint-\d+)',
+            r"(\/managed\/whats-new\/managed\/sprint-\d+)",
+            r"(\/whats-new\/managed\/sprint-\d+)",
         ]
 
         found = set()
