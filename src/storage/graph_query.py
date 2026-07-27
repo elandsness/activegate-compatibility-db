@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from src.storage.graph_connection import GraphConnection
 
@@ -102,12 +102,16 @@ class GraphQuery:
                 warnings.extend(os_compat["warnings"])
 
         # Check extension compatibility if specified
+        unknown_extensions = []
         if extensions:
             ext_issues = self.check_extensions_compatibility(
-                activegate_version, extensions
+                activegate_version,
+                extensions,
+                managed_version=managed_version,
             )
             issues.extend(ext_issues["failed"])
             warnings.extend(ext_issues["warnings"])
+            unknown_extensions = ext_issues.get("unknown", [])
 
         # Determine overall status
         if issues:
@@ -124,6 +128,7 @@ class GraphQuery:
             "os_family": os_family,
             "issues": issues,
             "warnings": warnings,
+            "unknown_extensions": unknown_extensions,
             "recommendations": recommendations,
             "confidence": self._calculate_confidence(
                 len(issues), len(warnings), len(recommendations)
@@ -176,7 +181,11 @@ class GraphQuery:
         }
 
     def check_extensions_compatibility(
-        self, activegate_version: str, extension_ids: List[str]
+        self,
+        activegate_version: str,
+        extension_ids: List[str],
+        managed_version: Optional[str] = None,
+        min_confidence: float = 0.7,
     ) -> Dict:
         """
         Check if extensions are compatible with an ActiveGate version.
@@ -190,35 +199,146 @@ class GraphQuery:
         """
         failed = []
         warnings = []
+        unknown = []
         passed = []
 
         for ext_id in extension_ids:
-            query = """
-            MATCH (ag:ActiveGateVersion {version: $ag_version})
-            MATCH (ext:Extension {id: $ext_id})
-            OPTIONAL MATCH (ag)-[r:COMPATIBLE_WITH]->(ext)
-            OPTIONAL MATCH (ag)-[r2:INCOMPATIBLE_WITH]->(ext)
-            RETURN r, r2
-            """
-
-            result = self.graph_conn.execute(
-                query, {"ag_version": activegate_version, "ext_id": ext_id}
+            result = self._check_extension2_constraint(
+                extension_id=ext_id,
+                activegate_version=activegate_version,
+                managed_version=managed_version,
+                min_confidence=min_confidence,
             )
 
-            if result:
-                for record in result:
-                    if record.get("r2"):
-                        failed.append(
-                            f"Extension {ext_id} is incompatible with AG {activegate_version}"
-                        )
-                    elif record.get("r"):
-                        passed.append(ext_id)
-                    else:
-                        warnings.append(f"No compatibility data for extension {ext_id}")
-            else:
-                warnings.append(f"Extension {ext_id} not found in database")
+            status = result.get("status")
+            if status == "FAILED":
+                failed.append(result.get("message"))
+            elif status == "UNKNOWN":
+                unknown.append(result.get("message"))
+            elif status == "WARN":
+                warnings.append(result.get("message"))
+            elif status == "PASSED":
+                passed.append(ext_id)
 
-        return {"failed": failed, "warnings": warnings, "passed": passed}
+        return {
+            "failed": failed,
+            "warnings": warnings,
+            "unknown": unknown,
+            "passed": passed,
+        }
+
+    def _check_extension2_constraint(
+        self,
+        extension_id: str,
+        activegate_version: str,
+        managed_version: Optional[str],
+        min_confidence: float,
+    ) -> Dict[str, str]:
+        query = """
+        MATCH (item:HubItem)
+        WHERE item.extension_type = 'extension-2'
+          AND coalesce(item.active, true) = true
+          AND (item.slug = $ext_id OR item.id = $ext_id)
+        OPTIONAL MATCH (item)-[:HAS_RELEASE]->(release:HubItemRelease)
+        WITH item, release
+        ORDER BY coalesce(release.published_at_epoch, 0) DESC
+        WITH item, collect(release)[0] AS latest_release
+        OPTIONAL MATCH (latest_release)-[ag_req:REQUIRES_ACTIVEGATE]->(ag_target:ActiveGateVersion)
+        OPTIONAL MATCH (latest_release)-[mc_req:REQUIRES_MANAGED]->(mc_target:ManagedClusterVersion)
+        RETURN item.slug AS slug,
+               item.title AS title,
+               latest_release.version AS release_version,
+               collect({
+                 min_version: ag_req.min_version,
+                 confidence: ag_req.confidence,
+                 verified: ag_req.verified
+               }) AS ag_constraints,
+               collect({
+                 min_version: mc_req.min_version,
+                 confidence: mc_req.confidence,
+                 verified: mc_req.verified
+               }) AS mc_constraints
+        """
+        rows = self.graph_conn.execute(query, {"ext_id": extension_id})
+        if not rows:
+            return {
+                "status": "WARN",
+                "message": f"Extension {extension_id} not found in extension-2 catalog",
+            }
+
+        row = rows[0]
+        title = row.get("title") or extension_id
+        ag_constraints = self._normalize_constraints(
+            row.get("ag_constraints", []), min_confidence
+        )
+        mc_constraints = self._normalize_constraints(
+            row.get("mc_constraints", []), min_confidence
+        )
+
+        if not ag_constraints:
+            return {
+                "status": "UNKNOWN",
+                "message": f"Extension {title} has no verified ActiveGate constraint data",
+            }
+
+        required_ag = self._max_version(ag_constraints)
+        if self._compare_versions(activegate_version, required_ag) < 0:
+            return {
+                "status": "FAILED",
+                "message": f"Extension {title} requires ActiveGate >= {required_ag} (target {activegate_version})",
+            }
+
+        if managed_version and mc_constraints:
+            required_managed = self._max_version(mc_constraints)
+            if self._compare_versions(managed_version, required_managed) < 0:
+                return {
+                    "status": "FAILED",
+                    "message": f"Extension {title} requires Managed >= {required_managed} (cluster {managed_version})",
+                }
+
+        return {"status": "PASSED", "message": f"Extension {title} passed"}
+
+    def _normalize_constraints(
+        self, constraints: List[Dict], min_confidence: float
+    ) -> List[str]:
+        versions = []
+        seen = set()
+        for constraint in constraints:
+            min_version = constraint.get("min_version")
+            confidence = float(constraint.get("confidence") or 0.0)
+            verified = bool(constraint.get("verified"))
+            if not min_version:
+                continue
+            if not verified and confidence < min_confidence:
+                continue
+            if min_version in seen:
+                continue
+            seen.add(min_version)
+            versions.append(min_version)
+        return versions
+
+    def _max_version(self, versions: List[str]) -> str:
+        if not versions:
+            return "0.0.0"
+        return sorted(versions, key=self._version_key)[-1]
+
+    def _compare_versions(self, left: str, right: str) -> int:
+        lk = self._version_key(left)
+        rk = self._version_key(right)
+        if lk < rk:
+            return -1
+        if lk > rk:
+            return 1
+        return 0
+
+    def _version_key(self, version: str) -> Tuple[int, ...]:
+        parts = [int(p) for p in str(version).split(".") if p.isdigit()]
+        if not parts:
+            return (0,)
+        # Pad to keep lexicographic tuple compare stable for 2/3 segment versions.
+        while len(parts) < 3:
+            parts.append(0)
+        return tuple(parts[:3])
 
     def get_compatible_activegate_versions(self, managed_version: str) -> List[str]:
         """Get all ActiveGate versions compatible with a Managed cluster version."""
