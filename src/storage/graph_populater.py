@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.nlp.nlp_pipeline import ExtractedFact
 from src.storage.graph_connection import GraphConnection
@@ -64,6 +64,7 @@ class GraphPopulator:
         MERGE (ag:ActiveGateVersion {version: $version})
         SET ag.title = $title,
             ag.source_url = $source_url,
+            ag.is_release = true,
             ag.last_seen = datetime()
         RETURN ag
         """
@@ -587,3 +588,291 @@ class GraphPopulator:
         except Exception as e:
             logger.error(f"Error creating compatibility relationship: {e}")
             return False
+
+    def ingest_hub_catalog(
+        self,
+        items: List[Dict[str, Any]],
+        min_verified_confidence: float = 0.7,
+    ) -> Dict[str, int]:
+        """Persist managed Hub items, releases, and extracted version constraints."""
+        if not self.graph_conn.driver and not self.graph_conn.connect():
+            raise RuntimeError("Failed to connect to Neo4j for Hub ingestion")
+
+        summary = {
+            "items_total": len(items),
+            "items_upserted": 0,
+            "releases_upserted": 0,
+            "constraints_upserted": 0,
+            "releases_skipped_incremental": 0,
+            "inactive_marked": 0,
+        }
+
+        existing_items = self._count_hub_items()
+        full_bootstrap = existing_items == 0
+        active_hub_ids = set()
+
+        for item in items:
+            hub_id = item.get("hub_id") or item.get("slug")
+            if not hub_id:
+                continue
+
+            active_hub_ids.add(hub_id)
+            self._upsert_hub_item(item)
+            summary["items_upserted"] += 1
+
+            latest_seen_epoch = self._get_latest_release_epoch(hub_id)
+            releases = item.get("releases") or []
+
+            for release in releases:
+                rel_epoch = release.get("published_at_epoch") or 0
+                if (
+                    not full_bootstrap
+                    and latest_seen_epoch
+                    and rel_epoch <= latest_seen_epoch
+                ):
+                    summary["releases_skipped_incremental"] += 1
+                    continue
+
+                self._upsert_hub_release(hub_id, item, release)
+                summary["releases_upserted"] += 1
+
+                for constraint in release.get("constraints", []):
+                    self._upsert_release_constraint(
+                        hub_id,
+                        release,
+                        constraint,
+                        min_verified_confidence=min_verified_confidence,
+                    )
+                    summary["constraints_upserted"] += 1
+
+        summary["inactive_marked"] = self._mark_missing_hub_items_inactive(
+            active_hub_ids
+        )
+        self._upsert_hub_ingestion_meta(
+            expected_count=len(items),
+            active_count=len(active_hub_ids),
+            min_verified_confidence=min_verified_confidence,
+        )
+        return summary
+
+    def get_hub_coverage_summary(self) -> Dict[str, Any]:
+        """Return Hub ingestion coverage and health metadata for UI/API display."""
+        query = """
+        OPTIONAL MATCH (meta:HubIngestionMeta {name: 'managed'})
+        OPTIONAL MATCH (item:HubItem)
+        WITH meta,
+             count(item) AS total_items,
+             count(CASE WHEN coalesce(item.active, true) THEN 1 END) AS active_items,
+             count(CASE WHEN item.extension_type = 'extension-2' THEN 1 END) AS extension2_items
+        RETURN
+            total_items,
+            active_items,
+            extension2_items,
+            meta.expected_count AS expected_count,
+            meta.last_ingested_at AS last_ingested_at,
+            meta.min_verified_confidence AS min_verified_confidence,
+            meta.status AS status
+        """
+        result = self.graph_conn.execute(query)
+        if not result:
+            return {
+                "total_items": 0,
+                "active_items": 0,
+                "extension2_items": 0,
+                "expected_count": 0,
+                "last_ingested_at": None,
+                "min_verified_confidence": None,
+                "status": "NO_DATA",
+                "count_mismatch": 0,
+            }
+
+        row = result[0]
+        expected = row.get("expected_count") or 0
+        active = row.get("active_items") or 0
+        return {
+            "total_items": row.get("total_items") or 0,
+            "active_items": active,
+            "extension2_items": row.get("extension2_items") or 0,
+            "expected_count": expected,
+            "last_ingested_at": (
+                str(row.get("last_ingested_at"))
+                if row.get("last_ingested_at")
+                else None
+            ),
+            "min_verified_confidence": row.get("min_verified_confidence"),
+            "status": row.get("status") or "UNKNOWN",
+            "count_mismatch": abs(expected - active),
+        }
+
+    def _count_hub_items(self) -> int:
+        query = "MATCH (item:HubItem) RETURN count(item) AS c"
+        result = self.graph_conn.execute(query)
+        return int(result[0]["c"]) if result else 0
+
+    def _upsert_hub_item(self, item: Dict[str, Any]) -> None:
+        query = """
+        MERGE (item:HubItem {id: $id})
+        SET item.slug = $slug,
+            item.title = $title,
+            item.description = $description,
+            item.extension_type = $extension_type,
+            item.managed = $managed,
+            item.supported_by_dt = $supported_by_dt,
+            item.details_url = $details_url,
+            item.feed_url = $feed_url,
+            item.feed_status = $feed_status,
+            item.release_latest_version = $release_latest_version,
+            item.active = true,
+            item.last_seen = datetime(),
+            item.updated_at = datetime()
+        """
+        self.graph_conn.execute(
+            query,
+            {
+                "id": item.get("hub_id") or item.get("slug"),
+                "slug": item.get("slug"),
+                "title": item.get("title") or item.get("slug"),
+                "description": item.get("description") or "",
+                "extension_type": item.get("extension_type") or "unknown",
+                "managed": bool(item.get("managed", True)),
+                "supported_by_dt": bool(item.get("supported_by_dt", False)),
+                "details_url": item.get("details_url") or "",
+                "feed_url": item.get("feed_url") or "",
+                "feed_status": item.get("feed_status") or "missing",
+                "release_latest_version": item.get("release_latest_version"),
+            },
+        )
+
+    def _get_latest_release_epoch(self, hub_id: str) -> int:
+        query = """
+        MATCH (item:HubItem {id: $id})-[:HAS_RELEASE]->(release:HubItemRelease)
+        RETURN coalesce(max(release.published_at_epoch), 0) AS latest_epoch
+        """
+        result = self.graph_conn.execute(query, {"id": hub_id})
+        if not result:
+            return 0
+        return int(result[0].get("latest_epoch") or 0)
+
+    def _upsert_hub_release(
+        self, hub_id: str, item: Dict[str, Any], release: Dict[str, Any]
+    ) -> None:
+        release_version = release.get("version") or release.get("title") or "unknown"
+        query = """
+        MERGE (item:HubItem {id: $item_id})
+        MERGE (release:HubItemRelease {item_id: $item_id, version: $version})
+        SET release.title = $title,
+            release.source_url = $source_url,
+            release.raw_description = $raw_description,
+            release.published_at = $published_at,
+            release.published_at_epoch = $published_at_epoch,
+            release.last_seen = datetime(),
+            release.updated_at = datetime()
+        MERGE (item)-[:HAS_RELEASE]->(release)
+        """
+        self.graph_conn.execute(
+            query,
+            {
+                "item_id": hub_id,
+                "version": release_version,
+                "title": release.get("title") or release_version,
+                "source_url": release.get("source_url") or item.get("details_url", ""),
+                "raw_description": release.get("raw_description") or "",
+                "published_at": release.get("published_at"),
+                "published_at_epoch": release.get("published_at_epoch"),
+            },
+        )
+
+    def _upsert_release_constraint(
+        self,
+        hub_id: str,
+        release: Dict[str, Any],
+        constraint: Dict[str, Any],
+        min_verified_confidence: float,
+    ) -> None:
+        component = constraint.get("component")
+        min_version = constraint.get("min_version")
+        if not component or not min_version:
+            return
+
+        relationship_type = (
+            "REQUIRES_ACTIVEGATE"
+            if component == "activegate"
+            else "REQUIRES_MANAGED" if component == "managed_cluster" else None
+        )
+        target_label = (
+            "ActiveGateVersion"
+            if component == "activegate"
+            else "ManagedClusterVersion" if component == "managed_cluster" else None
+        )
+        if not relationship_type or not target_label:
+            return
+
+        release_version = release.get("version") or release.get("title") or "unknown"
+        confidence = float(constraint.get("confidence") or 0.0)
+        verified = confidence >= min_verified_confidence
+
+        query = f"""
+        MERGE (release:HubItemRelease {{item_id: $item_id, version: $release_version}})
+        MERGE (target:{target_label} {{version: $min_version}})
+        MERGE (release)-[r:{relationship_type} {{operator: $operator, min_version: $min_version}}]->(target)
+        SET r.confidence = $confidence,
+            r.verified = $verified,
+            r.threshold = $threshold,
+            r.source_url = $source_url,
+            r.raw_text = $raw_text,
+            r.updated_at = datetime()
+        """
+
+        self.graph_conn.execute(
+            query,
+            {
+                "item_id": hub_id,
+                "release_version": release_version,
+                "min_version": min_version,
+                "operator": constraint.get("operator") or ">=",
+                "confidence": confidence,
+                "verified": verified,
+                "threshold": min_verified_confidence,
+                "source_url": constraint.get("source_url")
+                or release.get("source_url", ""),
+                "raw_text": constraint.get("raw_text") or "",
+            },
+        )
+
+    def _mark_missing_hub_items_inactive(self, active_hub_ids: set) -> int:
+        if not active_hub_ids:
+            return 0
+        query = """
+        MATCH (item:HubItem)
+        WHERE NOT item.id IN $active_ids
+        SET item.active = false,
+            item.updated_at = datetime()
+        RETURN count(item) AS c
+        """
+        result = self.graph_conn.execute(query, {"active_ids": list(active_hub_ids)})
+        return int(result[0]["c"]) if result else 0
+
+    def _upsert_hub_ingestion_meta(
+        self,
+        expected_count: int,
+        active_count: int,
+        min_verified_confidence: float,
+    ) -> None:
+        status = "HEALTHY" if expected_count == active_count else "DEGRADED"
+        query = """
+        MERGE (meta:HubIngestionMeta {name: 'managed'})
+        SET meta.expected_count = $expected_count,
+            meta.active_count = $active_count,
+            meta.status = $status,
+            meta.min_verified_confidence = $min_verified_confidence,
+            meta.last_ingested_at = datetime()
+        """
+        self.graph_conn.execute(
+            query,
+            {
+                "expected_count": expected_count,
+                "active_count": active_count,
+                "status": status,
+                "min_verified_confidence": min_verified_confidence,
+            },
+        )

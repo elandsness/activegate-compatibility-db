@@ -121,3 +121,6 @@ data/*
 # Temporary files
 temp_*
 *.tmp
+
+# Local Boost filter/config overrides
+.boost/

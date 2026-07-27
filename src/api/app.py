@@ -5,6 +5,8 @@ Provides REST endpoints for chat, compatibility checks, and data management.
 
 import logging
 import os
+import re
+from typing import Dict, List
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -77,6 +79,50 @@ def _init_components():
 reasoner, graph_populator = _init_components()
 query_processor = QueryProcessor(reasoner)
 nlp_pipeline = NLPPipeline()
+
+
+def _process_documents_with_nlp(documents: List[Dict]) -> Dict:
+    """Process documents via NLP pipeline and persist extracted facts."""
+    facts_extracted = 0
+    processed_docs = []
+
+    for doc in documents:
+        content = doc.get("content", "")
+        logger.info(
+            "Processing document '%s' with %d chars",
+            doc.get("title", "Unknown"),
+            len(content),
+        )
+
+        result = nlp_pipeline.process_document(
+            text=content,
+            source_url=doc.get("url", ""),
+            source_title=doc.get("title", "Document"),
+        )
+
+        facts = FactConverter.convert_to_facts(result)
+        doc_facts = len(facts)
+        facts_extracted += doc_facts
+        graph_populator.populate_from_facts(facts)
+
+        processed_docs.append(
+            {
+                "title": doc.get("title", "Unknown"),
+                "url": doc.get("url", ""),
+                "content_length": len(content),
+                "facts_extracted": doc_facts,
+                "facts_stored": len(facts),
+                "compatibility_statements": len(result.compatibility_statements),
+                "version_pairs": len(result.version_pairs),
+            }
+        )
+
+    return {"facts_extracted": facts_extracted, "documents": processed_docs}
+
+
+def _extract_release_version_from_url(url: str) -> str:
+    match = re.search(r"sprint-(\d+)", url, re.IGNORECASE)
+    return f"1.{match.group(1)}" if match else ""
 
 
 @app.route("/api/health", methods=["GET"])
@@ -180,30 +226,21 @@ def ingest_data():
     data = request.get_json(force=True, silent=True) or {}
     source = data.get("source", "releases")
 
-    items_scraped = 0
-    facts_extracted = 0
-
     try:
-        documents = []
-
-        if source == "releases":
-            import re
-
+        if source == "all":
+            from src.ingestion.eos_scraper import EndOfSupportScraper
+            from src.ingestion.hub_scraper import HubExtensionsScraper
             from src.ingestion.scraper import ReleaseNotesScraper
 
-            def _extract_version_from_url(url: str) -> str:
-                match = re.search(r"sprint-(\d+)", url, re.IGNORECASE)
-                return f"1.{match.group(1)}" if match else ""
+            run_results = []
+            total_items = 0
+            total_facts = 0
 
+            # Releases
             scraper = ReleaseNotesScraper()
             releases = scraper.scrape_release_notes()
-            items_scraped = len(releases)
-            documents = releases
-            logger.info(f"Release scraper found {len(releases)} documents")
-
-            # Ensure every scraped release exists as a graph node before NLP extraction.
             for release in releases:
-                version = release.get("version") or _extract_version_from_url(
+                version = release.get("version") or _extract_release_version_from_url(
                     release.get("url", "")
                 )
                 title = release.get("title") or f"ActiveGate {version}"
@@ -211,31 +248,118 @@ def ingest_data():
                     graph_populator.ensure_activegate_release_node(
                         version, title, release.get("url", "")
                     )
+            release_result = _process_documents_with_nlp(releases)
+            total_items += len(releases)
+            total_facts += release_result["facts_extracted"]
+            run_results.append(
+                {
+                    "source": "releases",
+                    "items_scraped": len(releases),
+                    "facts_extracted": release_result["facts_extracted"],
+                    "documents": release_result["documents"],
+                }
+            )
+
+            # Hub (structured path)
+            hub_scraper = HubExtensionsScraper()
+            managed_items = hub_scraper.scrape_managed_catalog(include_feeds=True)
+            hub_summary = graph_populator.ingest_hub_catalog(managed_items)
+            total_items += len(managed_items)
+            total_facts += hub_summary.get("constraints_upserted", 0)
+            run_results.append(
+                {
+                    "source": "hub",
+                    "items_scraped": len(managed_items),
+                    "facts_extracted": hub_summary.get("constraints_upserted", 0),
+                    "hub_summary": hub_summary,
+                }
+            )
+
+            # EOS
+            eos_scraper = EndOfSupportScraper()
+            announcements = eos_scraper.scrape_end_of_support()
+            eos_result = _process_documents_with_nlp(announcements)
+            total_items += len(announcements)
+            total_facts += eos_result["facts_extracted"]
+            run_results.append(
+                {
+                    "source": "eos",
+                    "items_scraped": len(announcements),
+                    "facts_extracted": eos_result["facts_extracted"],
+                    "documents": eos_result["documents"],
+                }
+            )
+
+            return jsonify(
+                {
+                    "status": "success",
+                    "source": "all",
+                    "items_scraped": total_items,
+                    "facts_extracted": total_facts,
+                    "pipeline": run_results,
+                }
+            )
+
+        if source == "releases":
+            from src.ingestion.scraper import ReleaseNotesScraper
+
+            scraper = ReleaseNotesScraper()
+            releases = scraper.scrape_release_notes()
+            logger.info("Release scraper found %d documents", len(releases))
+
+            for release in releases:
+                version = release.get("version") or _extract_release_version_from_url(
+                    release.get("url", "")
+                )
+                title = release.get("title") or f"ActiveGate {version}"
+                if version:
+                    graph_populator.ensure_activegate_release_node(
+                        version, title, release.get("url", "")
+                    )
+            processed = _process_documents_with_nlp(releases)
+            return jsonify(
+                {
+                    "status": "success",
+                    "source": source,
+                    "items_scraped": len(releases),
+                    "facts_extracted": processed["facts_extracted"],
+                    "documents": processed["documents"],
+                }
+            )
 
         elif source == "hub":
             from src.ingestion.hub_scraper import HubExtensionsScraper
 
             scraper = HubExtensionsScraper()
-            extensions = scraper.scrape_extensions()
-            items_scraped = len(extensions)
-            documents = [
+            managed_items = scraper.scrape_managed_catalog(include_feeds=True)
+            hub_summary = graph_populator.ingest_hub_catalog(managed_items)
+            logger.info("Hub ingest summary: %s", hub_summary)
+            return jsonify(
                 {
-                    "title": ext.get("name", "Extension"),
-                    "url": ext.get("url", ""),
-                    "content": str(ext.get("data", {})),
+                    "status": "success",
+                    "source": source,
+                    "items_scraped": len(managed_items),
+                    "facts_extracted": hub_summary.get("constraints_upserted", 0),
+                    "hub_summary": hub_summary,
                 }
-                for ext in extensions
-            ]
-            logger.info(f"Hub scraper found {len(extensions)} extensions")
+            )
 
         elif source == "eos":
             from src.ingestion.eos_scraper import EndOfSupportScraper
 
             scraper = EndOfSupportScraper()
             announcements = scraper.scrape_end_of_support()
-            items_scraped = len(announcements)
-            documents = announcements
-            logger.info(f"EOS scraper found {len(announcements)} announcements")
+            logger.info("EOS scraper found %d announcements", len(announcements))
+            processed = _process_documents_with_nlp(announcements)
+            return jsonify(
+                {
+                    "status": "success",
+                    "source": source,
+                    "items_scraped": len(announcements),
+                    "facts_extracted": processed["facts_extracted"],
+                    "documents": processed["documents"],
+                }
+            )
 
         elif source == "url":
             url = data.get("url")
@@ -249,63 +373,27 @@ def ingest_data():
             documents = [
                 {"title": data.get("title", url), "url": url, "content": response.text}
             ]
-            items_scraped = 1
             logger.info(f"URL scraper processed {url}")
+            processed = _process_documents_with_nlp(documents)
+            return jsonify(
+                {
+                    "status": "success",
+                    "source": source,
+                    "items_scraped": 1,
+                    "facts_extracted": processed["facts_extracted"],
+                    "documents": processed["documents"],
+                }
+            )
 
         else:
             return (
                 jsonify(
-                    {"error": f"Unknown source: {source}. Use: releases, hub, eos, url"}
+                    {
+                        "error": f"Unknown source: {source}. Use: all, releases, hub, eos, url"
+                    }
                 ),
                 400,
             )
-
-        facts_extracted = 0
-        processed_docs = []
-
-        for doc in documents:
-            content = doc.get("content", "")
-            logger.info(
-                f"Processing document '{doc.get('title', 'Unknown')}' with {len(content)} chars"
-            )
-
-            result = nlp_pipeline.process_document(
-                text=content,
-                source_url=doc.get("url", ""),
-                source_title=doc.get("title", "Document"),
-            )
-
-            # Convert to facts and store in graph
-            facts = FactConverter.convert_to_facts(result)
-            doc_facts = len(facts)
-            facts_extracted += doc_facts
-            logger.info(
-                f"Extracted {len(result.compatibility_statements)} compatibility statements and generated {doc_facts} graph facts"
-            )
-            graph_populator.populate_from_facts(facts)
-            logger.info(f"Stored {len(facts)} facts in graph")
-
-            processed_docs.append(
-                {
-                    "title": doc.get("title", "Unknown"),
-                    "url": doc.get("url", ""),
-                    "content_length": len(content),
-                    "facts_extracted": doc_facts,
-                    "facts_stored": len(facts),
-                    "compatibility_statements": len(result.compatibility_statements),
-                    "version_pairs": len(result.version_pairs),
-                }
-            )
-
-        return jsonify(
-            {
-                "status": "success",
-                "source": source,
-                "items_scraped": items_scraped,
-                "facts_extracted": facts_extracted,
-                "documents": processed_docs,
-            }
-        )
 
     except Exception as e:
         logger.error(f"Ingest error: {e}")
@@ -318,7 +406,12 @@ def get_versions():
     graph_conn = _make_graph_connection()
     try:
         graph_conn.connect()
-        query = "MATCH (ag:ActiveGateVersion) RETURN ag.version as version ORDER BY ag.version"
+        query = """
+        MATCH (ag:ActiveGateVersion)
+        WHERE coalesce(ag.is_release, false) = true
+        RETURN ag.version as version
+        ORDER BY ag.version
+        """
         result = graph_conn.execute(query)
         versions = [record["version"] for record in result]
         return jsonify({"versions": versions})
@@ -345,6 +438,20 @@ def get_relationships():
         return jsonify({"relationships": relationships})
     except Exception as e:
         return jsonify({"error": str(e), "relationships": []}), 500
+    finally:
+        graph_conn.disconnect()
+
+
+@app.route("/api/data/hub-summary", methods=["GET"])
+def get_hub_summary():
+    """Get managed Hub ingestion coverage and health summary."""
+    graph_conn = _make_graph_connection()
+    try:
+        graph_conn.connect()
+        summary = GraphPopulator(graph_conn).get_hub_coverage_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
         graph_conn.disconnect()
 
