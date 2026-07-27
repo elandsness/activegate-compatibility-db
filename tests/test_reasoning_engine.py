@@ -338,9 +338,7 @@ def test_query_processor_marks_ready_when_all_required_context_provided():
     assert parsed["context"]["target_activegate_version"] == "1.335"
     assert parsed["context"]["managed_cluster_version"] == "1.335"
     assert parsed["context"]["cluster_version"] == "1.335"
-    assert parsed["context"]["extensions"] == [
-        {"id": "custom-ext", "version": "2.0"}
-    ]
+    assert parsed["context"]["extensions"] == [{"id": "custom-ext", "version": "2.0"}]
 
 
 def test_query_processor_follow_up_is_one_field_at_a_time():
