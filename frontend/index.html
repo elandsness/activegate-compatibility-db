@@ -216,6 +216,30 @@
         padding: 20px;
         color: #888;
       }
+      .progress-track {
+        margin-top: 14px;
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: #24243d;
+        overflow: hidden;
+        border: 1px solid #3f3f60;
+      }
+      .progress-bar {
+        width: 35%;
+        height: 100%;
+        background: linear-gradient(90deg, #00d4ff, #59e0ff);
+        border-radius: 999px;
+        animation: ingest-progress 1.2s ease-in-out infinite;
+      }
+      @keyframes ingest-progress {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(290%);
+        }
+      }
     </style>
   </head>
   <body>
@@ -588,6 +612,17 @@
             >
               {loading ? '⏳ Importing...' : '✓ Import All (Releases + Hub + EOS)'}
             </button>
+
+            {loading && (
+              <div style={{ marginTop: '10px' }}>
+                <div style={{ color: '#9ddfff', fontSize: '0.88rem' }}>
+                  Import in progress. This can take around 45-60 seconds.
+                </div>
+                <div className="progress-track" role="progressbar" aria-label="Import progress">
+                  <div className="progress-bar" />
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: '20px' }}>
               <button
