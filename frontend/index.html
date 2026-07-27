@@ -231,6 +231,7 @@
         const [activeTab, setActiveTab] = useState('ingest');
         const [versions, setVersions] = useState([]);
         const [relationships, setRelationships] = useState([]);
+        const [hubSummary, setHubSummary] = useState({});
 
         useEffect(() => {
           fetchData();
@@ -245,6 +246,10 @@
             const rRes = await fetch(`${API_URL}/data/relationships`);
             const rData = await rRes.json();
             setRelationships(rData.relationships || []);
+
+            const hRes = await fetch(`${API_URL}/data/hub-summary`);
+            const hData = await hRes.json();
+            setHubSummary(hData || {});
           } catch (e) {
             console.error('Failed to fetch data:', e);
           }
@@ -284,7 +289,12 @@
             {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
             {activeTab === 'chat' && <ChatTab />}
             {activeTab === 'data' && (
-              <DataTab versions={versions} relationships={relationships} onDataChange={fetchData} />
+              <DataTab
+                versions={versions}
+                relationships={relationships}
+                hubSummary={hubSummary}
+                onDataChange={fetchData}
+              />
             )}
           </div>
         );
@@ -385,7 +395,9 @@
         );
       }
 
-      function DataTab({ versions, relationships, onDataChange }) {
+      function DataTab({ versions, relationships, hubSummary, onDataChange }) {
+        const coverageStatus = hubSummary.status || 'NO_DATA';
+
         return (
           <div className="data-container">
             <div className="stats-grid">
@@ -396,6 +408,38 @@
               <div className="stat-card">
                 <h3>{relationships.reduce((sum, r) => sum + r.count, 0)}</h3>
                 <p>Total Relationships</p>
+              </div>
+              <div className="stat-card">
+                <h3>{hubSummary.active_items || 0}</h3>
+                <p>Managed Hub Items</p>
+              </div>
+              <div className="stat-card">
+                <h3>{hubSummary.extension2_items || 0}</h3>
+                <p>Extension-2 Items</p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginBottom: '20px',
+                padding: '14px 16px',
+                borderRadius: '8px',
+                background: '#3a3a5a',
+                border:
+                  coverageStatus === 'HEALTHY'
+                    ? '1px solid #22c55e'
+                    : coverageStatus === 'DEGRADED'
+                      ? '1px solid #f59e0b'
+                      : '1px solid #555',
+              }}
+            >
+              <div style={{ fontWeight: 'bold' }}>
+                Hub Coverage: {coverageStatus}
+              </div>
+              <div style={{ marginTop: '6px', color: '#ddd', fontSize: '0.92rem' }}>
+                Active: {hubSummary.active_items || 0} / Expected:{' '}
+                {hubSummary.expected_count || 0} | Mismatch:{' '}
+                {hubSummary.count_mismatch || 0}
               </div>
             </div>
 
@@ -464,46 +508,20 @@
       }
 
       function IngestTab({ onDataChange }) {
-        const [source, setSource] = useState('releases');
+        const [advancedOpen, setAdvancedOpen] = useState(false);
+        const [source, setSource] = useState('url');
         const [url, setUrl] = useState('');
         const [loading, setLoading] = useState(false);
         const [result, setResult] = useState(null);
 
-        const sources = [
-          {
-            id: 'releases',
-            label: 'Releases',
-            emoji: '📄',
-            description: 'Dynatrace release notes',
-          },
-          {
-            id: 'hub',
-            label: 'Hub',
-            emoji: '🔌',
-            description: 'Extensions & compatibility',
-          },
-          {
-            id: 'eos',
-            label: 'EOS',
-            emoji: '⏰',
-            description: 'End-of-support announcements',
-          },
-          {
-            id: 'url',
-            label: 'Custom URL',
-            emoji: '🌐',
-            description: 'Scrape any URL',
-          },
-        ];
-
-        const handleIngest = async () => {
-          if (!source || loading) return;
-          if (source === 'url' && !url.trim()) return;
+        const handleIngest = async (ingestSource) => {
+          if (!ingestSource || loading) return;
+          if (ingestSource === 'url' && !url.trim()) return;
 
           setLoading(true);
           try {
-            const payload = { source };
-            if (source === 'url') {
+            const payload = { source: ingestSource };
+            if (ingestSource === 'url') {
               payload.url = url;
             }
 
@@ -523,96 +541,113 @@
 
         return (
           <div className="data-container">
-            <h3 style={{ marginBottom: '20px' }}>📥 Data Sources</h3>
+            <h3 style={{ marginBottom: '8px' }}>📥 Import Dataset</h3>
+            <p style={{ marginBottom: '18px', color: '#bbb', fontSize: '0.92rem' }}>
+              Runs Releases + Hub + End-of-Support ingestion in one pass.
+            </p>
 
-            <div
+            <button
+              onClick={() => handleIngest('all')}
+              disabled={loading}
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                gap: '12px',
-                marginBottom: '20px',
+                padding: '12px 30px',
+                background: '#00d4ff',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#1a1a2e',
+                fontSize: '1rem',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+                opacity: loading ? 0.5 : 1,
               }}
             >
-              {sources.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    setSource(s.id);
-                    setResult(null);
-                  }}
-                  disabled={loading}
-                  style={{
-                    padding: '15px 10px',
-                    background: source === s.id ? '#00d4ff' : '#3a3a5a',
-                    border: source === s.id ? '2px solid #00d4ff' : 'none',
-                    borderRadius: '8px',
-                    color: source === s.id ? '#1a1a2e' : '#eee',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    textAlign: 'center',
-                    fontSize: '0.95rem',
-                    fontWeight: source === s.id ? 'bold' : 'normal',
-                    transition: 'all 0.2s',
-                    opacity: loading ? 0.5 : 1,
-                  }}
-                >
-                  <div>{s.emoji}</div>
-                  <div style={{ fontSize: '0.85rem', marginTop: '5px' }}>
-                    {s.label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '0.7rem',
-                      opacity: 0.7,
-                      marginTop: '3px',
-                    }}
-                  >
-                    {s.description}
-                  </div>
-                </button>
-              ))}
+              {loading ? '⏳ Importing...' : '✓ Import All (Releases + Hub + EOS)'}
+            </button>
+
+            <div style={{ marginTop: '20px' }}>
+              <button
+                onClick={() => setAdvancedOpen(!advancedOpen)}
+                style={{
+                  background: 'transparent',
+                  color: '#9ddfff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                }}
+              >
+                {advancedOpen ? 'Hide Advanced Import' : 'Show Advanced Import'}
+              </button>
             </div>
 
-            {source === 'url' && (
-              <div style={{ marginBottom: '15px' }}>
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://example.com..."
+            {advancedOpen && (
+              <div
+                style={{
+                  marginTop: '12px',
+                  background: '#313154',
+                  border: '1px solid #4a4a6f',
+                  borderRadius: '8px',
+                  padding: '14px',
+                }}
+              >
+                <div style={{ marginBottom: '10px', color: '#ddd' }}>
+                  Advanced single-source import
+                </div>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
                   disabled={loading}
                   style={{
                     width: '100%',
-                    padding: '12px',
+                    padding: '10px',
                     background: '#1a1a2e',
-                    border: '1px solid #3a3a5a',
-                    borderRadius: '8px',
                     color: '#eee',
-                    fontSize: '0.95rem',
+                    border: '1px solid #4a4a6f',
+                    borderRadius: '6px',
+                    marginBottom: '10px',
                   }}
-                />
-              </div>
-            )}
+                >
+                  <option value="releases">Releases</option>
+                  <option value="hub">Hub</option>
+                  <option value="eos">EOS</option>
+                  <option value="url">Custom URL</option>
+                </select>
 
-            {source && (
-              <button
-                onClick={handleIngest}
-                disabled={loading || (source === 'url' && !url.trim())}
-                style={{
-                  padding: '12px 30px',
-                  background: '#00d4ff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#1a1a2e',
-                  fontSize: '1rem',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontWeight: 'bold',
-                  opacity:
-                    loading || (source === 'url' && !url.trim()) ? 0.5 : 1,
-                  transition: 'all 0.2s',
-                }}
-              >
-                {loading ? '⏳ Ingesting...' : '✓ Start Ingestion'}
-              </button>
+                {source === 'url' && (
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://example.com..."
+                    disabled={loading}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      background: '#1a1a2e',
+                      border: '1px solid #4a4a6f',
+                      borderRadius: '6px',
+                      color: '#eee',
+                      marginBottom: '10px',
+                    }}
+                  />
+                )}
+
+                <button
+                  onClick={() => handleIngest(source)}
+                  disabled={loading || (source === 'url' && !url.trim())}
+                  style={{
+                    padding: '10px 18px',
+                    background: '#2d9bb8',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    opacity:
+                      loading || (source === 'url' && !url.trim()) ? 0.5 : 1,
+                  }}
+                >
+                  Run Advanced Import
+                </button>
+              </div>
             )}
 
             {result && (
@@ -657,6 +692,11 @@
                         Facts extracted:{' '}
                         <strong>{result.facts_extracted}</strong>
                       </div>
+                      {result.pipeline && (
+                        <div style={{ marginTop: '8px' }}>
+                          Steps: {result.pipeline.map((p) => p.source).join(' → ')}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

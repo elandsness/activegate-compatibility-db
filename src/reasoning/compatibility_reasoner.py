@@ -489,6 +489,16 @@ class CompatibilityReasoner:
                     )
                 )
 
+            for unknown_msg in result.get("unknown_extensions", []):
+                warnings.append(
+                    CompatibilityIssue(
+                        severity="warning",
+                        category="extension_unknown",
+                        message=unknown_msg,
+                        recommendation="Add verified extension compatibility constraints before decision",
+                    )
+                )
+
             return {
                 "issues": issues,
                 "warnings": warnings,
@@ -504,6 +514,9 @@ class CompatibilityReasoner:
         warnings: List[CompatibilityIssue],
     ) -> CompatibilityStatus:
         """Determine final compatibility status."""
+        if any(w.category == "extension_unknown" for w in warnings):
+            return CompatibilityStatus.UNKNOWN
+
         # Critical issues = NO_GO
         critical_issues = [i for i in issues if i.severity == "critical"]
         if critical_issues:
