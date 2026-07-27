@@ -625,7 +625,11 @@ class GraphPopulator:
 
             for release in releases:
                 rel_epoch = release.get("published_at_epoch") or 0
-                if not full_bootstrap and latest_seen_epoch and rel_epoch <= latest_seen_epoch:
+                if (
+                    not full_bootstrap
+                    and latest_seen_epoch
+                    and rel_epoch <= latest_seen_epoch
+                ):
                     summary["releases_skipped_incremental"] += 1
                     continue
 
@@ -641,7 +645,9 @@ class GraphPopulator:
                     )
                     summary["constraints_upserted"] += 1
 
-        summary["inactive_marked"] = self._mark_missing_hub_items_inactive(active_hub_ids)
+        summary["inactive_marked"] = self._mark_missing_hub_items_inactive(
+            active_hub_ids
+        )
         self._upsert_hub_ingestion_meta(
             expected_count=len(items),
             active_count=len(active_hub_ids),
@@ -688,9 +694,11 @@ class GraphPopulator:
             "active_items": active,
             "extension2_items": row.get("extension2_items") or 0,
             "expected_count": expected,
-            "last_ingested_at": str(row.get("last_ingested_at"))
-            if row.get("last_ingested_at")
-            else None,
+            "last_ingested_at": (
+                str(row.get("last_ingested_at"))
+                if row.get("last_ingested_at")
+                else None
+            ),
             "min_verified_confidence": row.get("min_verified_confidence"),
             "status": row.get("status") or "UNKNOWN",
             "count_mismatch": abs(expected - active),
@@ -789,16 +797,12 @@ class GraphPopulator:
         relationship_type = (
             "REQUIRES_ACTIVEGATE"
             if component == "activegate"
-            else "REQUIRES_MANAGED"
-            if component == "managed_cluster"
-            else None
+            else "REQUIRES_MANAGED" if component == "managed_cluster" else None
         )
         target_label = (
             "ActiveGateVersion"
             if component == "activegate"
-            else "ManagedClusterVersion"
-            if component == "managed_cluster"
-            else None
+            else "ManagedClusterVersion" if component == "managed_cluster" else None
         )
         if not relationship_type or not target_label:
             return
@@ -829,7 +833,8 @@ class GraphPopulator:
                 "confidence": confidence,
                 "verified": verified,
                 "threshold": min_verified_confidence,
-                "source_url": constraint.get("source_url") or release.get("source_url", ""),
+                "source_url": constraint.get("source_url")
+                or release.get("source_url", ""),
                 "raw_text": constraint.get("raw_text") or "",
             },
         )

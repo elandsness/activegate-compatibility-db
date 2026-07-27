@@ -17,9 +17,7 @@ class HubExtensionsScraper:
 
     HUB_LISTING_URL = "https://www.dynatrace.com/hub/?managed=true"
     PUBLIC_HUB_API = "https://hub-manager.hub.central.dynatrace.com/api/v1/public-hub/"
-    FEED_ROOT = (
-        "https://hub-manager.hub.central.dynatrace.com/api/v1/public-hub/feed"
-    )
+    FEED_ROOT = "https://hub-manager.hub.central.dynatrace.com/api/v1/public-hub/feed"
     USER_AGENT = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -50,7 +48,9 @@ class HubExtensionsScraper:
                     "scraped_at": item.get("scraped_at"),
                 }
             )
-        logger.info("Prepared %d extension-2 entries from managed catalog", len(extensions))
+        logger.info(
+            "Prepared %d extension-2 entries from managed catalog", len(extensions)
+        )
         return extensions
 
     def scrape_managed_catalog(self, include_feeds: bool = True) -> List[Dict]:
@@ -170,9 +170,9 @@ class HubExtensionsScraper:
                     "title": title,
                     "version": version,
                     "published_at": published_at.isoformat() if published_at else None,
-                    "published_at_epoch": int(published_at.timestamp())
-                    if published_at
-                    else None,
+                    "published_at_epoch": (
+                        int(published_at.timestamp()) if published_at else None
+                    ),
                     "raw_description": description_text,
                     "source_url": item.get("details_url", ""),
                     "constraints": self._extract_constraints(
@@ -254,7 +254,10 @@ class HubExtensionsScraper:
                 constraint["operator"],
                 constraint["min_version"],
             )
-            if key not in unique or unique[key]["confidence"] < constraint["confidence"]:
+            if (
+                key not in unique
+                or unique[key]["confidence"] < constraint["confidence"]
+            ):
                 unique[key] = constraint
 
         return list(unique.values())
@@ -268,7 +271,9 @@ class HubExtensionsScraper:
             right = len(text)
         sentence = text[left:right].strip()
         if not sentence:
-            sentence = text[max(0, start - 80) : min(len(text), end + 80)].strip()
+            slice_start = max(0, start - 80)
+            slice_end = min(len(text), end + 80)
+            sentence = text[slice_start:slice_end].strip()
         return sentence[:500]
 
     def _html_to_text(self, html_fragment: str) -> str:
