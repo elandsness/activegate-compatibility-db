@@ -77,7 +77,10 @@ class OSParser:
             "Red Hat Enterprise Linux",
             r"(?:Red\s+Hat\s+Enterprise\s+Linux|\bRHEL\b|\bRed\s+Hat\b)",
         ),
-        ("SUSE Linux Enterprise Server", r"(?:SUSE\s+Linux\s+Enterprise\s+Server|\bSLES\b)"),
+        (
+            "SUSE Linux Enterprise Server",
+            r"(?:SUSE\s+Linux\s+Enterprise\s+Server|\bSLES\b)",
+        ),
         ("CentOS Stream", r"CentOS\s+Stream"),
         ("Alpine Linux", r"Alpine\s+Linux(?:\s*\([^)]*\))?"),
         ("Amazon Linux", r"Amazon\s+Linux"),
@@ -149,10 +152,16 @@ class OSParser:
             )
 
         # Targeted parsing to avoid broad matches that pull unrelated numbers.
-        targeted_patterns = [(r"(Windows Server|Windows)\s*[:\-]?\s*([^\n]{0,120})", "windows", None)]
+        targeted_patterns = [
+            (r"(Windows Server|Windows)\s*[:\-]?\s*([^\n]{0,120})", "windows", None)
+        ]
         for canonical_name, distro_regex in OSParser.LINUX_DISTRO_PATTERNS:
             targeted_patterns.append(
-                (rf"({distro_regex})\s*[:\-]?\s*([^\n]{{0,120}})", "linux", canonical_name)
+                (
+                    rf"({distro_regex})\s*[:\-]?\s*([^\n]{{0,120}})",
+                    "linux",
+                    canonical_name,
+                )
             )
 
         for pat, family, canonical_name in targeted_patterns:
@@ -189,7 +198,9 @@ class OSParser:
         # Fallback: generic pattern scan using OS_PATTERNS (captures remaining cases)
         for os_family, pattern in OSParser.OS_PATTERNS.items():
             for match in re.finditer(pattern, text, re.IGNORECASE):
-                name = match.group(0).split()[0] if match.group(0) else os_family.title()
+                name = (
+                    match.group(0).split()[0] if match.group(0) else os_family.title()
+                )
                 if os_family == "windows" and "server" in match.group(0).lower():
                     name = "Windows Server"
                 if os_family == "kubernetes":
@@ -210,7 +221,12 @@ class OSParser:
         seen = set()
         deduped = []
         for o in os_versions:
-            key = (o.get("family"), o.get("name"), str(o.get("version")), o.get("position"))
+            key = (
+                o.get("family"),
+                o.get("name"),
+                str(o.get("version")),
+                o.get("position"),
+            )
             if key in seen:
                 continue
             seen.add(key)

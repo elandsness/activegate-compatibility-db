@@ -258,7 +258,9 @@ def status():
     click.echo("")
     click.echo("Supported OS families:")
     click.echo("  - Windows (2016, 2019, 2022)")
-    click.echo("  - Linux distros (RHEL, Debian, Ubuntu, SLES, Rocky, AlmaLinux, and others)")
+    click.echo(
+        "  - Linux distros (RHEL, Debian, Ubuntu, SLES, Rocky, AlmaLinux, and others)"
+    )
 
 
 @cli.command()

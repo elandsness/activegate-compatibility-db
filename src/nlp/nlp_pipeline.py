@@ -377,9 +377,7 @@ class FactConverter:
 
         for os_entry in os_entities:
             os_name = str(
-                os_entry.get("name")
-                or os_entry.get("family")
-                or "OS"
+                os_entry.get("name") or os_entry.get("family") or "OS"
             ).strip()
             versions = FactConverter._normalize_os_versions(
                 str(os_entry.get("version", "")).strip()
