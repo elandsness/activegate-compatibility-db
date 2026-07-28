@@ -354,6 +354,20 @@ def test_query_processor_follow_up_is_one_field_at_a_time():
     assert "OS family" not in prompt
 
 
+def test_query_processor_advances_after_short_prompt_answer():
+    """Ensure short answer (e.g., just version) fills prompted field and advances."""
+    reasoner = CompatibilityReasoner()
+    processor = QueryProcessor(reasoner)
+
+    first = processor.process_query("Can I upgrade?")
+    assert first["context"]["next_required_field"] == "current_activegate_version"
+
+    second = processor.process_query("1.330", context=first["context"])
+    assert second["context"]["current_activegate_version"] == "1.330"
+    assert second["missing_fields"][0] == "target_activegate_version"
+    assert "Desired ActiveGate version" in second["follow_up_prompt"]
+
+
 if __name__ == "__main__":
     test_compatibility_reasoner()
     test_semantic_search()

@@ -9,6 +9,7 @@ A system for checking ActiveGate upgrade compatibility for Dynatrace Managed env
 - **CLI Interface**: Check compatibility via command line or config files
 - **Automated Updates**: Weekly data refresh from Dynatrace documentation
 - **Source Citations**: Links back to original documentation for explainability
+- **Batch CSV Checks**: Upload a CSV of ActiveGate environments and receive a CSV with compatibility findings columns appended
 
 ## Quick Start
 
@@ -47,6 +48,50 @@ agi check-file config.yaml
 # Get system status
 agi status
 ```
+
+### Batch CSV API Usage
+
+Download the template CSV:
+
+```bash
+curl -L -o activegate-compatibility-template.csv \
+  http://localhost:5000/api/check/template
+```
+
+Process a batch CSV and download results:
+
+```bash
+curl -L -X POST \
+  -F "file=@activegate-compatibility-template.csv" \
+  http://localhost:5000/api/check/batch-csv \
+  -o activegate-compatibility-with-findings.csv
+```
+
+Input CSV requirements:
+
+- UTF-8, comma-delimited CSV
+- Required headers:
+  - `current_activegate_version`
+  - `target_activegate_version`
+  - `managed_cluster_version`
+  - `os_family`
+  - `os_version`
+  - `extensions`
+- `extensions` cell format is a JSON object map, for example: `{"custom-ext":"2.0.0","another-ext":"1.5.2"}`
+
+Output columns appended by `/api/check/batch-csv`:
+
+- `compatibility_status`
+- `compatibility_confidence`
+- `compatibility_issues`
+- `compatibility_warnings`
+- `compatibility_recommendations`
+- `row_error`
+
+Notes:
+
+- Missing `current_activegate_version` or `target_activegate_version` writes a row-level error and continues processing other rows.
+- Blank `managed_cluster_version` and `extensions` values are accepted.
 
 ### Docker Usage
 

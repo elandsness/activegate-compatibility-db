@@ -165,13 +165,14 @@ class GraphQuery:
             issues.append(f"No OS compatibility data found for {os_family}")
             compatible = False
         else:
-            # Check if specific OS version is supported
+            # Rows contain all OS nodes for this family; warn once only when
+            # none of them has an explicit SUPPORTED_BY relationship.
             compatible = True
-            for record in result:
-                if not record.get("r"):
-                    warnings.append(
-                        f"No explicit support for {os_family} with AG {activegate_version}"
-                    )
+            has_explicit_support = any(record.get("r") for record in result)
+            if not has_explicit_support:
+                warnings.append(
+                    f"No explicit support for {os_family} with AG {activegate_version}"
+                )
 
         return {
             "compatible": compatible,

@@ -321,6 +321,12 @@
                 💬 Chat
               </button>
               <button
+                className={`tab ${activeTab === 'batch' ? 'active' : ''}`}
+                onClick={() => setActiveTab('batch')}
+              >
+                📄 Batch CSV Check
+              </button>
+              <button
                 className={`tab ${activeTab === 'data' ? 'active' : ''}`}
                 onClick={() => setActiveTab('data')}
               >
@@ -330,6 +336,7 @@
 
             {activeTab === 'ingest' && <IngestTab onDataChange={fetchData} />}
             {activeTab === 'chat' && <ChatTab />}
+            {activeTab === 'batch' && <BatchCheckTab />}
             {activeTab === 'data' && (
               <DataTab
                 versions={versions}
@@ -346,7 +353,7 @@
       function ChatTab() {
         const [messages, setMessages] = useState([
           {
-            text: 'Hello! I can help with ActiveGate upgrade decisions. I will first collect all required details (cluster version, OS family/version, current ActiveGate, desired ActiveGate, Managed Cluster version, and installed extensions with versions) before returning GO/NO-GO.',
+            text: 'Hello! I can help with ActiveGate upgrade decisions. I will first collect all required details (current ActiveGate, desired ActiveGate, Managed Cluster version, OS family/version, and installed extensions with versions) before returning GO/NO-GO.',
             user: false,
           },
         ]);
@@ -576,6 +583,192 @@
                 </div>
               ))}
             </div>
+          </div>
+        );
+      }
+
+      function BatchCheckTab() {
+        const [file, setFile] = useState(null);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState('');
+        const [successMessage, setSuccessMessage] = useState('');
+
+        const downloadBlob = (blob, filename) => {
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          URL.revokeObjectURL(url);
+        };
+
+        const handleDownloadTemplate = async () => {
+          setError('');
+          setSuccessMessage('');
+          try {
+            const response = await fetch(`${API_URL}/check/template`);
+            if (!response.ok) {
+              const data = await parseApiResponse(response);
+              throw new Error(data.error || `Template download failed with ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            downloadBlob(blob, 'activegate-compatibility-template.csv');
+            setSuccessMessage('Template downloaded successfully.');
+          } catch (e) {
+            setError(e.message || String(e));
+          }
+        };
+
+        const handleBatchUpload = async () => {
+          if (!file || loading) return;
+
+          setLoading(true);
+          setError('');
+          setSuccessMessage('');
+
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${API_URL}/check/batch-csv`, {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!response.ok) {
+              const data = await parseApiResponse(response);
+              throw new Error(data.error || `Batch processing failed with ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const sourceName = file.name.replace(/\.csv$/i, '');
+            const outputName = `${sourceName || 'activegate-batch'}-with-findings.csv`;
+            downloadBlob(blob, outputName);
+            setSuccessMessage('Batch processing complete. Download started.');
+          } catch (e) {
+            setError(e.message || String(e));
+          }
+
+          setLoading(false);
+        };
+
+        return (
+          <div className="data-container">
+            <h3 style={{ marginBottom: '10px' }}>📄 Batch Compatibility Check</h3>
+            <p style={{ marginBottom: '16px', color: '#bbb', fontSize: '0.92rem' }}>
+              Upload a UTF-8 comma-separated CSV with one ActiveGate environment per row.
+              You will receive a processed CSV with compatibility findings columns appended.
+            </p>
+
+            <div
+              style={{
+                background: '#313154',
+                border: '1px solid #4a4a6f',
+                borderRadius: '8px',
+                padding: '14px',
+                marginBottom: '14px',
+              }}
+            >
+              <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Input contract</div>
+              <div style={{ color: '#ddd', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                Required headers:
+                {' current_activegate_version,target_activegate_version,managed_cluster_version,os_family,os_version,extensions'}
+              </div>
+              <div style={{ color: '#ddd', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                Extensions cell format:
+                {' {"ext-id":"1.2.3","another-ext":"4.5.6"}'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <button
+                onClick={handleDownloadTemplate}
+                disabled={loading}
+                style={{
+                  padding: '10px 16px',
+                  background: '#2d9bb8',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >
+                Download Template
+              </button>
+
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                disabled={loading}
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] || null);
+                  setError('');
+                  setSuccessMessage('');
+                }}
+                style={{
+                  background: '#1a1a2e',
+                  border: '1px solid #4a4a6f',
+                  borderRadius: '6px',
+                  padding: '8px',
+                  color: '#eee',
+                }}
+              />
+
+              <button
+                onClick={handleBatchUpload}
+                disabled={loading || !file}
+                style={{
+                  padding: '10px 16px',
+                  background: '#00d4ff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#1a1a2e',
+                  cursor: loading || !file ? 'not-allowed' : 'pointer',
+                  opacity: loading || !file ? 0.6 : 1,
+                  fontWeight: 'bold',
+                }}
+              >
+                {loading ? 'Processing...' : 'Upload and Process CSV'}
+              </button>
+            </div>
+
+            {file && (
+              <div style={{ color: '#bbb', fontSize: '0.9rem', marginBottom: '10px' }}>
+                Selected file: {file.name}
+              </div>
+            )}
+
+            {error && (
+              <div
+                style={{
+                  background: '#3a3a5a',
+                  border: '1px solid #ef4444',
+                  color: '#ef4444',
+                  padding: '12px',
+                  borderRadius: '8px',
+                }}
+              >
+                Error: {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div
+                style={{
+                  background: '#2c3f32',
+                  border: '1px solid #22c55e',
+                  color: '#9ef5bc',
+                  padding: '12px',
+                  borderRadius: '8px',
+                }}
+              >
+                {successMessage}
+              </div>
+            )}
           </div>
         );
       }

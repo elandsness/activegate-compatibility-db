@@ -54,6 +54,28 @@ class MockGraphConnection(GraphConnection):
         }
 
 
+class MockGraphConnectionNoOsSupport(MockGraphConnection):
+    """Mock connection that returns multiple OS rows with no support relationship."""
+
+    def execute(self, query: str, parameters: dict = None) -> list:
+        self.queries_executed.append({"query": query, "parameters": parameters})
+
+        if "RETURN ag" in query:
+            return [{"ag": {"version": parameters["version"]}}]
+
+        if "RETURN os, r" in query:
+            return [
+                {"os": {"os_name": "linux", "version": "7"}, "r": None},
+                {"os": {"os_name": "linux", "version": "8"}, "r": None},
+                {"os": {"os_name": "linux", "version": "9"}, "r": None},
+            ]
+
+        if "MATCH" in query:
+            return [{"r": None}]
+
+        return []
+
+
 def test_graph_connection():
     """Test graph connection management."""
     print("=" * 60)
@@ -226,6 +248,22 @@ Deprecations: Version 1.300 and earlier are deprecated.
     query_engine = GraphQuery(conn)
     compatibility = query_engine.check_activegate_compatibility("1.335", "1.335")
     print(f"✓ Compatibility status: {compatibility['status']}")
+
+
+def test_os_warning_not_repeated_per_row():
+    """Ensure graph OS compatibility warning appears once, not once per OS row."""
+    conn = MockGraphConnectionNoOsSupport()
+    conn.connect()
+
+    query_engine = GraphQuery(conn)
+    result = query_engine.check_activegate_compatibility(
+        activegate_version="1.335",
+        managed_version="1.335",
+        os_family="linux",
+    )
+
+    repeated_warning = "No explicit support for linux with AG 1.335"
+    assert result["warnings"].count(repeated_warning) == 1
 
 
 if __name__ == "__main__":

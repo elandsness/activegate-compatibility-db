@@ -168,6 +168,9 @@ class QueryProcessor:
 
         merged_context = self._build_and_merge_context(query, context)
         missing_fields = self._get_missing_context_fields(merged_context)
+        merged_context["next_required_field"] = (
+            missing_fields[0] if missing_fields else None
+        )
 
         return {
             "query_type": query_type,
@@ -192,6 +195,7 @@ class QueryProcessor:
             "managed_cluster_version": None,
             "extensions": None,
             "extensions_known": False,
+            "next_required_field": None,
         }
 
         if context:
@@ -202,6 +206,25 @@ class QueryProcessor:
             if value is not None:
                 merged[key] = value
 
+        # In interview mode, map short replies to the field we explicitly requested.
+        pending_field = merged.get("next_required_field")
+        if pending_field and pending_field in self.REQUIRED_CONTEXT_FIELDS:
+            if pending_field == "extensions":
+                field_is_missing = not merged.get("extensions_known", False)
+            else:
+                field_is_missing = not merged.get(pending_field)
+
+            if field_is_missing:
+                pending_value = self._extract_value_for_field_from_answer(
+                    pending_field, query
+                )
+                if pending_value is not None:
+                    if pending_field == "extensions":
+                        merged["extensions"] = pending_value
+                        merged["extensions_known"] = True
+                    else:
+                        merged[pending_field] = pending_value
+
         # Treat cluster and managed cluster as aliases unless explicitly set differently.
         if merged.get("managed_cluster_version") and not merged.get("cluster_version"):
             merged["cluster_version"] = merged["managed_cluster_version"]
@@ -209,6 +232,64 @@ class QueryProcessor:
             merged["managed_cluster_version"] = merged["cluster_version"]
 
         return merged
+
+    def _extract_value_for_field_from_answer(self, field: str, query: str):
+        """Extract value from a short answer for a specific requested field."""
+        import re
+
+        normalized = query.strip().lower()
+        version_pattern = r"(\d+\.\d+(?:\.\d+)*)"
+
+        if field in [
+            "current_activegate_version",
+            "target_activegate_version",
+            "managed_cluster_version",
+        ]:
+            match = re.search(version_pattern, normalized)
+            return match.group(1) if match else None
+
+        if field == "os_family":
+            if "windows" in normalized:
+                return "windows"
+            if any(
+                token in normalized for token in ["linux", "rhel", "ubuntu", "centos"]
+            ):
+                return "linux"
+            return None
+
+        if field == "os_version":
+            patterns = [
+                r"([0-9]{2}\.[0-9]{2})",  # ubuntu style
+                r"([0-9]{4})",  # windows year
+                r"([0-9]+(?:\.[0-9]+)?)",  # generic numeric
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, normalized)
+                if match:
+                    return match.group(1)
+            return None
+
+        if field == "extensions":
+            if normalized in ["none", "no", "n/a", "na"]:
+                return []
+            if any(
+                phrase in normalized
+                for phrase in ["no extensions", "none installed", "without extensions"]
+            ):
+                return []
+
+            matches = re.findall(
+                r"([a-z0-9][a-z0-9_-]{1,})\s*[:@]\s*(\d+\.\d+(?:\.\d+)*)",
+                normalized,
+            )
+            if matches:
+                return [
+                    {"id": ext_id, "version": ext_version}
+                    for ext_id, ext_version in matches
+                ]
+            return None
+
+        return None
 
     def _extract_context_from_query(self, query: str) -> Dict:
         """Extract required compatibility context from a natural language message."""
@@ -299,7 +380,12 @@ class QueryProcessor:
         # Extensions can be explicit list or explicit "none installed".
         if any(
             phrase in query
-            for phrase in ["no extensions", "none installed", "without extensions"]
+            for phrase in [
+                "no extensions",
+                "none installed",
+                "without extensions",
+                "extensions: none",
+            ]
         ):
             result["extensions"] = []
             result["extensions_known"] = True
