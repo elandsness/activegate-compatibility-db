@@ -67,12 +67,65 @@ class VersionParser:
 class OSParser:
     """Parse operating system versions and families."""
 
+    # Canonical Linux distro names based on Dynatrace support matrix naming.
+    LINUX_DISTRO_PATTERNS = [
+        (
+            "Red Hat Enterprise Linux CoreOS",
+            r"(?:Red\s+Hat\s+Enterprise\s+Linux\s+CoreOS|RHCOS)",
+        ),
+        (
+            "Red Hat Enterprise Linux",
+            r"(?:Red\s+Hat\s+Enterprise\s+Linux|\bRHEL\b|\bRed\s+Hat\b)",
+        ),
+        ("SUSE Linux Enterprise Server", r"(?:SUSE\s+Linux\s+Enterprise\s+Server|\bSLES\b)"),
+        ("CentOS Stream", r"CentOS\s+Stream"),
+        ("Alpine Linux", r"Alpine\s+Linux(?:\s*\([^)]*\))?"),
+        ("Amazon Linux", r"Amazon\s+Linux"),
+        ("Azure Linux", r"Azure\s+Linux"),
+        ("Bottlerocket", r"Bottlerocket"),
+        ("Debian", r"Debian"),
+        ("Fedora", r"Fedora"),
+        ("Oracle Linux", r"Oracle\s+Linux"),
+        ("Rocky Linux", r"Rocky\s+Linux"),
+        ("Ubuntu", r"Ubuntu"),
+        ("openSUSE", r"openSUSE"),
+        ("AlmaLinux", r"AlmaLinux"),
+        ("CentOS", r"CentOS"),
+    ]
+
     OS_PATTERNS = {
         "windows": r"(?:Windows|Win)[\s\-]?(?:Server\s)?(\d+(?:\.\d+)*)",
-        "linux": r"(?:Linux|RHEL|CentOS|Ubuntu)[\s\-]?(\d+(?:\.\d+)*)",
         "macos": r"(?:macOS|OS\s?X)[\s\-]?(\d+(?:\.\d+)*)",
         "kubernetes": r"Kubernetes[\s\-]?(?:v)?(\d+\.\d+(?:\.\d+)*)",
     }
+
+    @staticmethod
+    def _normalize_version_token(token: str) -> Optional[str]:
+        if not token:
+            return None
+        cleaned = token.strip()
+        cleaned = re.sub(r"\bLTS\b", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"(?<=\d)\s*[xX]\b", "", cleaned).strip()
+        cleaned = re.sub(r"\.$", "", cleaned)
+        return cleaned or None
+
+    @staticmethod
+    def _extract_versions_from_tail(tail: str) -> List[str]:
+        versions: List[str] = []
+        for vr in re.finditer(
+            r"(\d+(?:\.\d+){0,2}(?:\s*[xX])?(?:\s*LTS)?)(?:\s*(?:to|-)\s*(\d+(?:\.\d+){0,2}(?:\s*[xX])?(?:\s*LTS)?))?",
+            tail,
+            re.IGNORECASE,
+        ):
+            v1 = OSParser._normalize_version_token(vr.group(1) or "")
+            v2 = OSParser._normalize_version_token(vr.group(2) or "")
+            if not v1:
+                continue
+            if v2:
+                versions.append(f"{v1}-{v2}")
+            else:
+                versions.append(v1)
+        return versions
 
     @staticmethod
     def find_os_versions(text: str) -> List[Dict]:
@@ -88,22 +141,21 @@ class OSParser:
             os_versions.append(
                 {
                     "family": "kubernetes",
+                    "name": "Kubernetes",
                     "version": f"{range_match.group(2)}-{range_match.group(3)}",
                     "raw": range_match.group(0),
                     "position": range_match.start(),
                 }
             )
 
-        # Targeted distro parsing to avoid broad matches that pull unrelated numbers
-        distro_patterns = [
-            (r"(Windows Server|Windows)\s*[:\-]?\s*([^\n]{0,120})", "windows"),
-            (
-                r"(CentOS|RHEL|Red Hat Enterprise Linux|Red Hat|Ubuntu)\s*[:\-]?\s*([^\n]{0,120})",
-                "linux",
-            ),
-        ]
+        # Targeted parsing to avoid broad matches that pull unrelated numbers.
+        targeted_patterns = [(r"(Windows Server|Windows)\s*[:\-]?\s*([^\n]{0,120})", "windows", None)]
+        for canonical_name, distro_regex in OSParser.LINUX_DISTRO_PATTERNS:
+            targeted_patterns.append(
+                (rf"({distro_regex})\s*[:\-]?\s*([^\n]{{0,120}})", "linux", canonical_name)
+            )
 
-        for pat, family in distro_patterns:
+        for pat, family, canonical_name in targeted_patterns:
             for m in re.finditer(pat, text, re.IGNORECASE):
                 tail = (m.group(2) or "").strip()
                 # skip if the tail looks like an extension header or unrelated phrase
@@ -116,26 +168,18 @@ class OSParser:
                         os_versions.append(
                             {
                                 "family": family,
+                                "name": m.group(1).strip(),
                                 "version": vr.group(1),
                                 "raw": m.group(0).strip(),
                                 "position": m.start(),
                             }
                         )
                 else:
-                    # capture ranges like '1.22 to 1.28' or dotted versions like '20.04'
-                    for vr in re.finditer(
-                        r"(\d+\.\d+(?:\.\d+)?)(?:\s*(?:to|-)\s*(\d+\.\d+(?:\.\d+)?))?",
-                        tail,
-                    ):
-                        v1 = vr.group(1)
-                        v2 = vr.group(2)
-                        if v2:
-                            ver = f"{v1}-{v2}"
-                        else:
-                            ver = v1
+                    for ver in OSParser._extract_versions_from_tail(tail):
                         os_versions.append(
                             {
                                 "family": family,
+                                "name": canonical_name,
                                 "version": ver,
                                 "raw": m.group(0).strip(),
                                 "position": m.start(),
@@ -145,9 +189,15 @@ class OSParser:
         # Fallback: generic pattern scan using OS_PATTERNS (captures remaining cases)
         for os_family, pattern in OSParser.OS_PATTERNS.items():
             for match in re.finditer(pattern, text, re.IGNORECASE):
+                name = match.group(0).split()[0] if match.group(0) else os_family.title()
+                if os_family == "windows" and "server" in match.group(0).lower():
+                    name = "Windows Server"
+                if os_family == "kubernetes":
+                    name = "Kubernetes"
                 os_versions.append(
                     {
                         "family": os_family,
+                        "name": name,
                         "version": (
                             match.group(1) if len(match.groups()) > 0 else "unknown"
                         ),
@@ -160,7 +210,7 @@ class OSParser:
         seen = set()
         deduped = []
         for o in os_versions:
-            key = (o["family"], str(o["version"]), o["position"])
+            key = (o.get("family"), o.get("name"), str(o.get("version")), o.get("position"))
             if key in seen:
                 continue
             seen.add(key)

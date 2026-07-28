@@ -10,6 +10,44 @@ logger = logging.getLogger(__name__)
 class GraphQuery:
     """Queries the Neo4j graph for compatibility information."""
 
+    OS_ALIAS_MAP = {
+        "rhel": "Red Hat Enterprise Linux",
+        "red hat": "Red Hat Enterprise Linux",
+        "red hat enterprise linux": "Red Hat Enterprise Linux",
+        "rhcos": "Red Hat Enterprise Linux CoreOS",
+        "red hat enterprise linux coreos": "Red Hat Enterprise Linux CoreOS",
+        "sles": "SUSE Linux Enterprise Server",
+        "suse linux enterprise server": "SUSE Linux Enterprise Server",
+        "centos stream": "CentOS Stream",
+        "amazon linux": "Amazon Linux",
+        "oracle linux": "Oracle Linux",
+        "rocky linux": "Rocky Linux",
+        "almalinux": "AlmaLinux",
+        "alpine": "Alpine Linux",
+        "alpine linux": "Alpine Linux",
+        "azure linux": "Azure Linux",
+        "opensuse": "openSUSE",
+    }
+
+    LINUX_DISTROS = {
+        "AlmaLinux",
+        "Alpine Linux",
+        "Amazon Linux",
+        "Azure Linux",
+        "Bottlerocket",
+        "CentOS",
+        "CentOS Stream",
+        "Debian",
+        "Fedora",
+        "Oracle Linux",
+        "Red Hat Enterprise Linux",
+        "Red Hat Enterprise Linux CoreOS",
+        "Rocky Linux",
+        "SUSE Linux Enterprise Server",
+        "Ubuntu",
+        "openSUSE",
+    }
+
     def __init__(self, graph_conn: GraphConnection):
         """
         Initialize graph query engine.
@@ -146,16 +184,35 @@ class GraphQuery:
         Returns:
             Dict with compatibility status
         """
+        os_query = (os_family or "").strip()
+        canonical = self.OS_ALIAS_MAP.get(os_query.lower(), os_query)
+        is_linux_aggregate = canonical.lower() == "linux"
+
         query = """
         MATCH (ag:ActiveGateVersion {version: $ag_version})
         MATCH (os:OSVersion)
-        WHERE tolower(os.os_name) = tolower($os_family)
+        WHERE (
+            tolower(os.os_name) = tolower($os_name)
+            OR (
+                $is_linux = true
+                AND (
+                    tolower(os.os_name) = 'linux'
+                    OR tolower(os.os_name) IN [name IN $linux_distros | tolower(name)]
+                )
+            )
+        )
         OPTIONAL MATCH (ag)-[r:SUPPORTED_BY]->(os)
         RETURN os, r
         """
 
         result = self.graph_conn.execute(
-            query, {"ag_version": activegate_version, "os_family": os_family}
+            query,
+            {
+                "ag_version": activegate_version,
+                "os_name": canonical,
+                "is_linux": is_linux_aggregate,
+                "linux_distros": sorted(self.LINUX_DISTROS),
+            },
         )
 
         issues = []
@@ -176,7 +233,7 @@ class GraphQuery:
 
         return {
             "compatible": compatible,
-            "os_family": os_family,
+            "os_family": os_query,
             "issues": issues,
             "warnings": warnings,
         }

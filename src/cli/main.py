@@ -64,7 +64,10 @@ def cli():
     "--target", "-t", required=True, help="Target ActiveGate version (e.g., 1.335)"
 )
 @click.option(
-    "--os-family", "-o", default=None, help="Operating system family (windows, linux)"
+    "--os-family",
+    "-o",
+    default=None,
+    help="Operating system (windows or Linux distro, e.g., Red Hat Enterprise Linux, Debian, Ubuntu)",
 )
 @click.option(
     "--os-version", default=None, help="Operating system version (e.g., 2022, 8)"
@@ -82,7 +85,7 @@ def check(current, target, os_family, os_version, managed, extensions, json_outp
 
     Examples:
         agi check -c 1.330 -t 1.335
-        agi check -c 1.330 -t 1.335 -o linux -8
+        agi check -c 1.330 -t 1.335 -o "Red Hat Enterprise Linux" --os-version 8
         agi check -c 1.330 -t 1.335 -m 1.335 -e custom-ext:2.0
     """
     # Parse extensions
@@ -166,7 +169,7 @@ def check_file(file_path, json_output):
     Example YAML:
         current_activegate_version: 1.330
         target_activegate_version: 1.335
-        os_family: linux
+        os_family: Red Hat Enterprise Linux
         os_version: "8"
         managed_cluster_version: 1.335
         extensions:
@@ -255,7 +258,7 @@ def status():
     click.echo("")
     click.echo("Supported OS families:")
     click.echo("  - Windows (2016, 2019, 2022)")
-    click.echo("  - Linux (RHEL 7.x, 8.x, 9.x, CentOS 7.x, 8.x, Ubuntu 20.04, 22.04)")
+    click.echo("  - Linux distros (RHEL, Debian, Ubuntu, SLES, Rocky, AlmaLinux, and others)")
 
 
 @cli.command()
