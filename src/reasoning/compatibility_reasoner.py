@@ -194,6 +194,9 @@ class CompatibilityReasoner:
             citations.extend(graph_result.get("citations", []))
 
         # 8. Determine final status
+        issues = self._dedupe_issues(issues)
+        warnings = self._dedupe_issues(warnings)
+
         status = self._determine_status(issues, warnings)
 
         # 9. Generate recommendations
@@ -214,6 +217,26 @@ class CompatibilityReasoner:
             confidence=confidence,
             checked_factors=checked_factors,
         )
+
+    @staticmethod
+    def _dedupe_issues(items: List[CompatibilityIssue]) -> List[CompatibilityIssue]:
+        """Remove repeated issue/warning entries while preserving first-seen order."""
+        seen = set()
+        deduped = []
+
+        for item in items:
+            key = (
+                item.severity,
+                item.category,
+                item.message,
+                item.recommendation,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+
+        return deduped
 
     def _check_version_compatibility(self, current: str, target: str) -> tuple:
         """Check if the version upgrade is valid."""

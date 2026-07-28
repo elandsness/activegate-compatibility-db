@@ -3,12 +3,15 @@ Flask API Backend for ActiveGate Compatibility Intelligence
 Provides REST endpoints for chat, compatibility checks, and data management.
 """
 
+import csv
+import json
 import logging
 import os
 import re
+from io import StringIO
 from typing import Dict, List
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
 from src.nlp.nlp_pipeline import FactConverter, NLPPipeline
@@ -24,6 +27,26 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+BATCH_REQUIRED_HEADERS = [
+    "current_activegate_version",
+    "target_activegate_version",
+    "managed_cluster_version",
+    "os_family",
+    "os_version",
+    "extensions",
+]
+
+BATCH_OUTPUT_HEADERS = [
+    "compatibility_status",
+    "compatibility_confidence",
+    "compatibility_issues",
+    "compatibility_warnings",
+    "compatibility_recommendations",
+    "row_error",
+]
+
+MAX_BATCH_ROWS = 5000
+
 
 @app.route("/")
 def index():
@@ -36,6 +59,8 @@ def index():
                 "health": "/api/health",
                 "chat": "/api/chat (POST)",
                 "check": "/api/check (POST)",
+                "batch_check": "/api/check/batch-csv (POST)",
+                "check_template": "/api/check/template (GET)",
                 "ingest": "/api/ingest (POST)",
                 "versions": "/api/data/versions",
                 "relationships": "/api/data/relationships",
@@ -123,6 +148,99 @@ def _process_documents_with_nlp(documents: List[Dict]) -> Dict:
 def _extract_release_version_from_url(url: str) -> str:
     match = re.search(r"sprint-(\d+)", url, re.IGNORECASE)
     return f"1.{match.group(1)}" if match else ""
+
+
+def _serialize_issues(items) -> str:
+    if not items:
+        return ""
+    return " | ".join(
+        f"[{item.severity}] {item.category}: {item.message}" for item in items
+    )
+
+
+def _serialize_recommendations(items: List[str]) -> str:
+    if not items:
+        return ""
+    return " | ".join(items)
+
+
+def _parse_extensions_cell(raw_extensions: str) -> List[Dict]:
+    if not raw_extensions or not raw_extensions.strip():
+        return []
+
+    try:
+        parsed = json.loads(raw_extensions)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid extensions JSON: {exc.msg}") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            'Extensions must be a JSON object map like {"ext-id": "1.2.3"}'
+        )
+
+    extensions = []
+    for ext_id, ext_version in parsed.items():
+        if not str(ext_id).strip():
+            raise ValueError("Extensions map contains an empty extension id")
+
+        extensions.append(
+            {
+                "id": str(ext_id).strip(),
+                "version": "" if ext_version is None else str(ext_version).strip(),
+            }
+        )
+
+    return extensions
+
+
+def _build_row_findings(row: Dict[str, str]) -> Dict[str, str]:
+    findings = {
+        "compatibility_status": "",
+        "compatibility_confidence": "",
+        "compatibility_issues": "",
+        "compatibility_warnings": "",
+        "compatibility_recommendations": "",
+        "row_error": "",
+    }
+
+    current = (row.get("current_activegate_version") or "").strip()
+    target = (row.get("target_activegate_version") or "").strip()
+    managed = (row.get("managed_cluster_version") or "").strip() or None
+    os_family = (row.get("os_family") or "").strip() or None
+    os_version = (row.get("os_version") or "").strip() or None
+    raw_extensions = row.get("extensions") or ""
+
+    if not current or not target:
+        findings["row_error"] = (
+            "Missing required values for current_activegate_version and/or target_activegate_version"
+        )
+        return findings
+
+    try:
+        extensions = _parse_extensions_cell(raw_extensions)
+    except ValueError as exc:
+        findings["row_error"] = str(exc)
+        return findings
+
+    result = reasoner.check_upgrade_compatibility(
+        current_version=current,
+        target_version=target,
+        os_family=os_family,
+        os_version=os_version,
+        managed_cluster_version=managed,
+        extensions=extensions,
+        use_graph=reasoner.graph_query is not None,
+    )
+
+    findings["compatibility_status"] = result.status.value
+    findings["compatibility_confidence"] = f"{result.confidence:.2f}"
+    findings["compatibility_issues"] = _serialize_issues(result.issues)
+    findings["compatibility_warnings"] = _serialize_issues(result.warnings)
+    findings["compatibility_recommendations"] = _serialize_recommendations(
+        result.recommendations
+    )
+
+    return findings
 
 
 @app.route("/api/health", methods=["GET"])
@@ -225,6 +343,101 @@ def check_compatibility():
     )
 
     return jsonify(result.to_dict())
+
+
+@app.route("/api/check/template", methods=["GET"])
+def check_template_csv():
+    """Download a CSV template for batch compatibility checks."""
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=BATCH_REQUIRED_HEADERS)
+    writer.writeheader()
+    writer.writerow(
+        {
+            "current_activegate_version": "1.330",
+            "target_activegate_version": "1.335",
+            "managed_cluster_version": "1.335",
+            "os_family": "linux",
+            "os_version": "8",
+            "extensions": '{"custom-ext":"2.0.0"}',
+        }
+    )
+
+    response = Response(output.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=activegate-compatibility-template.csv"
+    )
+    return response
+
+
+@app.route("/api/check/batch-csv", methods=["POST"])
+def batch_check_csv():
+    """Process a CSV file and append compatibility findings columns per row."""
+    upload = request.files.get("file")
+    if upload is None:
+        return (
+            jsonify(
+                {"error": "No file uploaded. Use multipart/form-data with field 'file'"}
+            ),
+            400,
+        )
+
+    try:
+        csv_content = upload.read().decode("utf-8")
+    except UnicodeDecodeError:
+        return jsonify({"error": "Unable to decode file as UTF-8 CSV"}), 400
+
+    reader = csv.DictReader(StringIO(csv_content))
+    if not reader.fieldnames:
+        return jsonify({"error": "Uploaded CSV has no header row"}), 400
+
+    missing_headers = [
+        header for header in BATCH_REQUIRED_HEADERS if header not in reader.fieldnames
+    ]
+    if missing_headers:
+        return (
+            jsonify(
+                {
+                    "error": "Missing required CSV headers",
+                    "missing_headers": missing_headers,
+                    "required_headers": BATCH_REQUIRED_HEADERS,
+                }
+            ),
+            400,
+        )
+
+    input_headers = list(reader.fieldnames)
+    output_headers = input_headers + [
+        h for h in BATCH_OUTPUT_HEADERS if h not in input_headers
+    ]
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=output_headers)
+    writer.writeheader()
+
+    row_count = 0
+    for row in reader:
+        row_count += 1
+        if row_count > MAX_BATCH_ROWS:
+            return (
+                jsonify(
+                    {
+                        "error": f"CSV exceeds max supported rows ({MAX_BATCH_ROWS})",
+                        "max_rows": MAX_BATCH_ROWS,
+                    }
+                ),
+                400,
+            )
+
+        findings = _build_row_findings(row)
+        row_out = dict(row)
+        row_out.update(findings)
+        writer.writerow(row_out)
+
+    response = Response(output.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=activegate-compatibility-with-findings.csv"
+    )
+    return response
 
 
 @app.route("/api/ingest", methods=["POST"])
