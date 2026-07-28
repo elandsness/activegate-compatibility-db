@@ -341,6 +341,21 @@ def test_query_processor_marks_ready_when_all_required_context_provided():
     assert parsed["context"]["extensions"] == [{"id": "custom-ext", "version": "2.0"}]
 
 
+def test_query_processor_preserves_linux_distro_name():
+    """Ensure distro names are preserved instead of collapsing to generic linux."""
+    reasoner = CompatibilityReasoner()
+    processor = QueryProcessor(reasoner)
+
+    parsed = processor.process_query(
+        "current activegate version: 1.330, desired activegate version: 1.335, "
+        "os: rhel 8, managed cluster version: 1.335, extensions: custom-ext:2.0"
+    )
+
+    assert parsed["ready_for_decision"] is True
+    assert parsed["context"]["os_family"] == "Red Hat Enterprise Linux"
+    assert parsed["context"]["os_version"] == "8"
+
+
 def test_query_processor_follow_up_is_one_field_at_a_time():
     """Ensure follow-up prompt requests only the next missing field."""
     reasoner = CompatibilityReasoner()
