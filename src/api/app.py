@@ -9,7 +9,7 @@ import logging
 import os
 import re
 from io import StringIO
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
@@ -148,6 +148,61 @@ def _process_documents_with_nlp(documents: List[Dict]) -> Dict:
 def _extract_release_version_from_url(url: str) -> str:
     match = re.search(r"sprint-(\d+)", url, re.IGNORECASE)
     return f"1.{match.group(1)}" if match else ""
+
+
+def _normalize_graph_value(value: Any) -> Any:
+    """Convert Neo4j values to JSON-safe values."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _pick_node_key(labels: List[str], props: Dict[str, Any]) -> str:
+    """Pick a stable display key for a node based on label and properties."""
+    if "ActiveGateVersion" in labels:
+        return str(props.get("version") or props.get("name") or props.get("id") or "unknown")
+    if "ManagedClusterVersion" in labels:
+        return str(props.get("version") or props.get("name") or props.get("id") or "unknown")
+    if "OSVersion" in labels:
+        os_name = props.get("os_name") or props.get("family") or "OS"
+        version = props.get("version") or "unknown"
+        return f"{os_name} {version}"
+    if "Extension" in labels:
+        return str(props.get("id") or props.get("slug") or props.get("name") or "extension")
+    if "HubItem" in labels:
+        return str(props.get("slug") or props.get("id") or props.get("title") or "hub-item")
+    if "HubItemRelease" in labels:
+        title = props.get("title") or props.get("version") or props.get("id") or "release"
+        return str(title)
+    if "Module" in labels:
+        return str(props.get("name") or props.get("id") or "module")
+    if "Setting" in labels:
+        return str(props.get("name") or props.get("id") or "setting")
+
+    return str(
+        props.get("name") or props.get("version") or props.get("id") or props.get("slug") or "node"
+    )
+
+
+def _relationship_status(relationship_type: str) -> str:
+    """Map relationship type to high-level graph status."""
+    if relationship_type in {"COMPATIBLE_WITH", "SUPPORTED_BY", "REQUIRES", "UPGRADEABLE_TO", "HAS_SETTING", "USES_MODULE"}:
+        return "compatible"
+    if relationship_type in {"DEPRECATED_IN", "END_OF_SUPPORT", "REQUIRES_UPGRADE"}:
+        return "questionable"
+    if relationship_type in {"INCOMPATIBLE_WITH"}:
+        return "incompatible"
+    return "unknown"
+
+
+def _status_color(status: str) -> str:
+    if status == "compatible":
+        return "#22c55e"
+    if status == "questionable":
+        return "#f59e0b"
+    if status == "incompatible":
+        return "#ef4444"
+    return "#94a3b8"
 
 
 def _serialize_issues(items) -> str:
@@ -759,6 +814,142 @@ def get_hub_summary():
         return jsonify(summary)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        graph_conn.disconnect()
+
+
+@app.route("/api/data/graph", methods=["GET"])
+def get_graph_data():
+    """Return node/edge payload for interactive graph rendering."""
+    graph_conn = _make_graph_connection()
+    try:
+        graph_conn.connect()
+
+        activegate_version = request.args.get("activegate_version")
+        raw_limit = request.args.get("limit", "500")
+        try:
+            limit = max(50, min(int(raw_limit), 1200))
+        except ValueError:
+            limit = 500
+
+        activegate_limit = max(10, min(limit // 2, 250))
+
+        query = """
+        MATCH (ag:ActiveGateVersion)
+        WHERE coalesce(ag.is_release, false) = true
+          AND ($activegate_version IS NULL OR ag.version = $activegate_version)
+        WITH ag
+        ORDER BY ag.version DESC
+        LIMIT $activegate_limit
+        MATCH (ag)-[r]-(other)
+        WHERE (
+          other:ManagedClusterVersion OR
+          other:OSVersion OR
+          other:Extension OR
+          other:HubItem OR
+          other:HubItemRelease OR
+          other:Module OR
+          other:Setting OR
+          other:ActiveGateVersion
+        )
+        WITH DISTINCT r, startNode(r) AS src, endNode(r) AS dst
+        RETURN labels(src) AS source_labels,
+               properties(src) AS source_props,
+               labels(dst) AS target_labels,
+               properties(dst) AS target_props,
+               type(r) AS relationship_type,
+               properties(r) AS relationship_props
+        LIMIT $edge_limit
+        """
+
+        rows = graph_conn.execute(
+            query,
+            {
+                "activegate_version": activegate_version,
+                "activegate_limit": activegate_limit,
+                "edge_limit": limit,
+            },
+        )
+
+        nodes_by_id: Dict[str, Dict[str, Any]] = {}
+        edges: List[Dict[str, Any]] = []
+
+        for idx, row in enumerate(rows):
+            source_labels = row.get("source_labels") or []
+            target_labels = row.get("target_labels") or []
+            source_props = row.get("source_props") or {}
+            target_props = row.get("target_props") or {}
+
+            source_type = source_labels[0] if source_labels else "Node"
+            target_type = target_labels[0] if target_labels else "Node"
+
+            source_key = _pick_node_key(source_labels, source_props)
+            target_key = _pick_node_key(target_labels, target_props)
+
+            source_id = f"{source_type}:{source_key}"
+            target_id = f"{target_type}:{target_key}"
+
+            if source_id not in nodes_by_id:
+                nodes_by_id[source_id] = {
+                    "id": source_id,
+                    "label": source_key,
+                    "type": source_type,
+                    "properties": {
+                        k: _normalize_graph_value(v)
+                        for k, v in source_props.items()
+                    },
+                }
+
+            if target_id not in nodes_by_id:
+                nodes_by_id[target_id] = {
+                    "id": target_id,
+                    "label": target_key,
+                    "type": target_type,
+                    "properties": {
+                        k: _normalize_graph_value(v)
+                        for k, v in target_props.items()
+                    },
+                }
+
+            rel_type = row.get("relationship_type") or "RELATED_TO"
+            rel_props = row.get("relationship_props") or {}
+            status = _relationship_status(rel_type)
+
+            edges.append(
+                {
+                    "id": f"e{idx}",
+                    "source": source_id,
+                    "target": target_id,
+                    "relationship": rel_type,
+                    "status": status,
+                    "color": _status_color(status),
+                    "confidence": _normalize_graph_value(rel_props.get("confidence")),
+                    "verified": _normalize_graph_value(rel_props.get("verified")),
+                }
+            )
+
+        status_counts = {
+            "compatible": 0,
+            "questionable": 0,
+            "incompatible": 0,
+            "unknown": 0,
+        }
+        for edge in edges:
+            status_counts[edge["status"]] = status_counts.get(edge["status"], 0) + 1
+
+        return jsonify(
+            {
+                "nodes": list(nodes_by_id.values()),
+                "edges": edges,
+                "status_counts": status_counts,
+                "filters": {
+                    "activegate_version": activegate_version,
+                    "limit": limit,
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": str(e), "nodes": [], "edges": []}), 500
     finally:
         graph_conn.disconnect()
 
