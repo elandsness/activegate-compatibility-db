@@ -249,11 +249,33 @@ class QueryProcessor:
             return match.group(1) if match else None
 
         if field == "os_family":
+            distro_tokens = [
+                ("red hat enterprise linux coreos", "Red Hat Enterprise Linux CoreOS"),
+                ("rhcos", "Red Hat Enterprise Linux CoreOS"),
+                ("red hat enterprise linux", "Red Hat Enterprise Linux"),
+                ("rhel", "Red Hat Enterprise Linux"),
+                ("suse linux enterprise server", "SUSE Linux Enterprise Server"),
+                ("sles", "SUSE Linux Enterprise Server"),
+                ("centos stream", "CentOS Stream"),
+                ("almalinux", "AlmaLinux"),
+                ("alpine linux", "Alpine Linux"),
+                ("amazon linux", "Amazon Linux"),
+                ("azure linux", "Azure Linux"),
+                ("bottlerocket", "Bottlerocket"),
+                ("debian", "Debian"),
+                ("fedora", "Fedora"),
+                ("oracle linux", "Oracle Linux"),
+                ("rocky linux", "Rocky Linux"),
+                ("opensuse", "openSUSE"),
+                ("ubuntu", "Ubuntu"),
+                ("centos", "CentOS"),
+            ]
             if "windows" in normalized:
                 return "windows"
-            if any(
-                token in normalized for token in ["linux", "rhel", "ubuntu", "centos"]
-            ):
+            for token, canonical in distro_tokens:
+                if token in normalized:
+                    return canonical
+            if "linux" in normalized:
                 return "linux"
             return None
 
@@ -355,11 +377,39 @@ class QueryProcessor:
             if vals:
                 result["cluster_version"] = vals[-1]
 
+        distro_tokens = [
+            ("red hat enterprise linux coreos", "Red Hat Enterprise Linux CoreOS"),
+            ("rhcos", "Red Hat Enterprise Linux CoreOS"),
+            ("red hat enterprise linux", "Red Hat Enterprise Linux"),
+            ("rhel", "Red Hat Enterprise Linux"),
+            ("suse linux enterprise server", "SUSE Linux Enterprise Server"),
+            ("sles", "SUSE Linux Enterprise Server"),
+            ("centos stream", "CentOS Stream"),
+            ("almalinux", "AlmaLinux"),
+            ("alpine linux", "Alpine Linux"),
+            ("amazon linux", "Amazon Linux"),
+            ("azure linux", "Azure Linux"),
+            ("bottlerocket", "Bottlerocket"),
+            ("debian", "Debian"),
+            ("fedora", "Fedora"),
+            ("oracle linux", "Oracle Linux"),
+            ("rocky linux", "Rocky Linux"),
+            ("opensuse", "openSUSE"),
+            ("ubuntu", "Ubuntu"),
+            ("centos", "CentOS"),
+        ]
+
         os_family = None
         if "windows" in query:
             os_family = "windows"
-        elif any(token in query for token in ["linux", "rhel", "centos", "ubuntu"]):
-            os_family = "linux"
+        else:
+            lowered_query = query.lower()
+            for token, canonical in distro_tokens:
+                if token in lowered_query:
+                    os_family = canonical
+                    break
+            if not os_family and "linux" in lowered_query:
+                os_family = "linux"
         if os_family:
             result["os_family"] = os_family
 

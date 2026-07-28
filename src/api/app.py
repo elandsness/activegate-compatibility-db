@@ -317,7 +317,7 @@ def chat():
 def check_compatibility():
     """
     Structured compatibility check endpoint.
-    Accepts: {"current": "1.330", "target": "1.335", "os_family": "linux", ...}
+    Accepts: {"current": "1.330", "target": "1.335", "os_family": "Red Hat Enterprise Linux", ...}
     Returns: Compatibility result with issues and recommendations.
     """
     data = request.get_json()
@@ -356,7 +356,7 @@ def check_template_csv():
             "current_activegate_version": "1.330",
             "target_activegate_version": "1.335",
             "managed_cluster_version": "1.335",
-            "os_family": "linux",
+            "os_family": "Red Hat Enterprise Linux",
             "os_version": "8",
             "extensions": '{"custom-ext":"2.0.0"}',
         }

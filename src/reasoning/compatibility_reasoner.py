@@ -295,24 +295,73 @@ class CompatibilityReasoner:
         issues = []
         warnings = []
 
-        # Known supported OS versions (from documentation patterns)
+        # Known supported OS versions based on the Dynatrace Linux support matrix.
         supported_os = {
             "windows": ["2016", "2019", "2022"],
-            "linux": ["7", "8", "9", "20.04", "22.04"],
-            "rhel": ["7", "8", "9"],
-            "centos": ["7", "8"],
-            "ubuntu": ["20.04", "22.04"],
+            "linux": [],
+            "almalinux": ["8", "9", "10"],
+            "alpine linux": [
+                "3.10",
+                "3.11",
+                "3.12",
+                "3.13",
+                "3.14",
+                "3.15",
+                "3.16",
+                "3.17",
+                "3.18",
+                "3.19",
+                "3.20",
+                "3.21",
+                "3.22",
+                "3.23",
+            ],
+            "amazon linux": ["2023"],
+            "azure linux": ["2", "3"],
+            "bottlerocket": ["1"],
+            "centos stream": ["9"],
+            "debian": ["11", "12", "13"],
+            "fedora": ["42", "43", "44"],
+            "oracle linux": ["7", "8", "9", "10"],
+            "red hat enterprise linux": ["7", "8", "9", "10"],
+            "rhel": ["7", "8", "9", "10"],
+            "red hat enterprise linux coreos": ["4.14", "4.15", "4.16"],
+            "rhcos": ["4.14", "4.15", "4.16"],
+            "rocky linux": ["8", "9", "10"],
+            "suse linux enterprise server": [
+                "12.5",
+                "15.4",
+                "15.5",
+                "15.6",
+                "15.7",
+                "16.0",
+            ],
+            "sles": ["12.5", "15.4", "15.5", "15.6", "15.7", "16.0"],
+            "ubuntu": ["16.04", "18.04", "20.04", "22.04", "24.04", "26.04"],
+            "opensuse": ["15.6", "16.0"],
+            "centos": ["7", "8", "9"],
         }
 
         os_family_lower = os_family.lower()
 
+        if os_family_lower == "linux":
+            warnings.append(
+                CompatibilityIssue(
+                    severity="warning",
+                    category="os",
+                    message=f"Linux provided without distro for AG {ag_version}",
+                    recommendation="Provide a specific Linux distro (for example: Red Hat Enterprise Linux, Debian, Ubuntu, SLES, Rocky Linux).",
+                )
+            )
+            return issues, warnings
+
         if os_family_lower in supported_os:
             if os_version:
                 # Check specific version
-                version_num = "".join(c for c in os_version if c.isdigit())
+                version_num = os_version.strip()
                 supported = supported_os[os_family_lower]
 
-                if not any(sv in version_num for sv in supported):
+                if supported and version_num not in supported:
                     warnings.append(
                         CompatibilityIssue(
                             severity="warning",

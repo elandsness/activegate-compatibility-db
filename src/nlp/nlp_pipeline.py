@@ -376,7 +376,9 @@ class FactConverter:
         seen = set()
 
         for os_entry in os_entities:
-            family = str(os_entry.get("family", "os")).strip().title()
+            os_name = str(
+                os_entry.get("name") or os_entry.get("family") or "OS"
+            ).strip()
             versions = FactConverter._normalize_os_versions(
                 str(os_entry.get("version", "")).strip()
             )
@@ -385,7 +387,7 @@ class FactConverter:
                 if not re.match(r"^\d+(?:\.\d+){0,2}$", version):
                     continue
 
-                object_value = f"{family} {version}"
+                object_value = f"{os_name} {version}"
                 signature = (activegate_version, object_value.lower())
                 if signature in seen:
                     continue

@@ -343,11 +343,31 @@ class GraphPopulator:
         patterns = [
             (r"(Windows Server)\s*(\d+(?:\.\d+)*)", "Windows Server"),
             (r"(Windows)\s*(\d+(?:\.\d+)*)", "Windows"),
-            (r"(Ubuntu)\s*(\d+(?:\.\d+)*)", "Ubuntu"),
             (
-                r"(CentOS|RHEL|Red Hat Enterprise Linux|Red Hat)\s*(\d+(?:\.\d+)*)",
-                "Linux",
+                r"(Red Hat Enterprise Linux CoreOS|RHCOS)\s*(\d+(?:\.\d+)*)",
+                "Red Hat Enterprise Linux CoreOS",
             ),
+            (
+                r"(Red Hat Enterprise Linux|RHEL|Red Hat)\s*(\d+(?:\.\d+)*)",
+                "Red Hat Enterprise Linux",
+            ),
+            (
+                r"(SUSE Linux Enterprise Server|SLES)\s*(\d+(?:\.\d+)*)",
+                "SUSE Linux Enterprise Server",
+            ),
+            (r"(CentOS Stream)\s*(\d+(?:\.\d+)*)", "CentOS Stream"),
+            (r"(AlmaLinux)\s*(\d+(?:\.\d+)*)", "AlmaLinux"),
+            (r"(Alpine Linux)\s*(\d+(?:\.\d+)*)", "Alpine Linux"),
+            (r"(Amazon Linux)\s*(\d+(?:\.\d+)*)", "Amazon Linux"),
+            (r"(Azure Linux)\s*(\d+(?:\.\d+)*)", "Azure Linux"),
+            (r"(Bottlerocket)\s*(\d+(?:\.\d+)*)", "Bottlerocket"),
+            (r"(Debian)\s*(\d+(?:\.\d+)*)", "Debian"),
+            (r"(Fedora)\s*(\d+(?:\.\d+)*)", "Fedora"),
+            (r"(Oracle Linux)\s*(\d+(?:\.\d+)*)", "Oracle Linux"),
+            (r"(Rocky Linux)\s*(\d+(?:\.\d+)*)", "Rocky Linux"),
+            (r"(Ubuntu)\s*(\d+(?:\.\d+)*)", "Ubuntu"),
+            (r"(openSUSE)\s*(\d+(?:\.\d+)*)", "openSUSE"),
+            (r"(CentOS)\s*(\d+(?:\.\d+)*)", "CentOS"),
             (r"(Linux)\s*(\d+(?:\.\d+)*)", "Linux"),
             (r"(Kubernetes)\s*(\d+\.\d+(?:\.\d+)*)", "Kubernetes"),
         ]
@@ -355,7 +375,7 @@ class GraphPopulator:
         for pattern, name in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                return {"os_name": match.group(1).title(), "version": match.group(2)}
+                return {"os_name": name, "version": match.group(2)}
 
         # Fallback: split into words and use first token as os_name
         tokens = text.split()
@@ -458,10 +478,9 @@ class GraphPopulator:
     ) -> bool:
         """Insert OS node and link it to the ActiveGate version via SUPPORTED_BY."""
         try:
-            # Parse 'family version' from subject, e.g. 'linux 8' or just 'linux'
-            parts = fact.subject.split() if fact.subject else []
-            os_name = parts[0] if parts else "Unknown"
-            os_ver = parts[1] if len(parts) > 1 else "unknown"
+            os_properties = self._parse_os_properties(fact.subject or "")
+            os_name = (os_properties or {}).get("os_name", "Unknown")
+            os_ver = (os_properties or {}).get("version", "unknown")
 
             self.graph_conn.execute(
                 "MERGE (os:OSVersion {os_name: $os_name, version: $version}) SET os.last_seen = datetime()",
