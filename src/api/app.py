@@ -9,7 +9,7 @@ import logging
 import os
 import re
 from io import StringIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
@@ -160,19 +160,29 @@ def _normalize_graph_value(value: Any) -> Any:
 def _pick_node_key(labels: List[str], props: Dict[str, Any]) -> str:
     """Pick a stable display key for a node based on label and properties."""
     if "ActiveGateVersion" in labels:
-        return str(props.get("version") or props.get("name") or props.get("id") or "unknown")
+        return str(
+            props.get("version") or props.get("name") or props.get("id") or "unknown"
+        )
     if "ManagedClusterVersion" in labels:
-        return str(props.get("version") or props.get("name") or props.get("id") or "unknown")
+        return str(
+            props.get("version") or props.get("name") or props.get("id") or "unknown"
+        )
     if "OSVersion" in labels:
         os_name = props.get("os_name") or props.get("family") or "OS"
         version = props.get("version") or "unknown"
         return f"{os_name} {version}"
     if "Extension" in labels:
-        return str(props.get("id") or props.get("slug") or props.get("name") or "extension")
+        return str(
+            props.get("id") or props.get("slug") or props.get("name") or "extension"
+        )
     if "HubItem" in labels:
-        return str(props.get("slug") or props.get("id") or props.get("title") or "hub-item")
+        return str(
+            props.get("slug") or props.get("id") or props.get("title") or "hub-item"
+        )
     if "HubItemRelease" in labels:
-        title = props.get("title") or props.get("version") or props.get("id") or "release"
+        title = (
+            props.get("title") or props.get("version") or props.get("id") or "release"
+        )
         return str(title)
     if "Module" in labels:
         return str(props.get("name") or props.get("id") or "module")
@@ -180,13 +190,24 @@ def _pick_node_key(labels: List[str], props: Dict[str, Any]) -> str:
         return str(props.get("name") or props.get("id") or "setting")
 
     return str(
-        props.get("name") or props.get("version") or props.get("id") or props.get("slug") or "node"
+        props.get("name")
+        or props.get("version")
+        or props.get("id")
+        or props.get("slug")
+        or "node"
     )
 
 
 def _relationship_status(relationship_type: str) -> str:
     """Map relationship type to high-level graph status."""
-    if relationship_type in {"COMPATIBLE_WITH", "SUPPORTED_BY", "REQUIRES", "UPGRADEABLE_TO", "HAS_SETTING", "USES_MODULE"}:
+    if relationship_type in {
+        "COMPATIBLE_WITH",
+        "SUPPORTED_BY",
+        "REQUIRES",
+        "UPGRADEABLE_TO",
+        "HAS_SETTING",
+        "USES_MODULE",
+    }:
         return "compatible"
     if relationship_type in {"DEPRECATED_IN", "END_OF_SUPPORT", "REQUIRES_UPGRADE"}:
         return "questionable"
@@ -895,8 +916,7 @@ def get_graph_data():
                     "label": source_key,
                     "type": source_type,
                     "properties": {
-                        k: _normalize_graph_value(v)
-                        for k, v in source_props.items()
+                        k: _normalize_graph_value(v) for k, v in source_props.items()
                     },
                 }
 
@@ -906,8 +926,7 @@ def get_graph_data():
                     "label": target_key,
                     "type": target_type,
                     "properties": {
-                        k: _normalize_graph_value(v)
-                        for k, v in target_props.items()
+                        k: _normalize_graph_value(v) for k, v in target_props.items()
                     },
                 }
 
