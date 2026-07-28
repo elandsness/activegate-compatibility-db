@@ -230,6 +230,32 @@ def test_batch_processing():
         )
 
 
+def test_linux_distro_os_facts_are_not_collapsed_to_generic_linux():
+    """Ensure distro-specific OS facts are preserved (e.g., RHEL 8, Debian 13)."""
+    pipeline = NLPPipeline()
+    text = """
+    What's new in Dynatrace ActiveGate 1.335
+    Supported OS: Red Hat Enterprise Linux 8, Debian 13, Ubuntu 24.04 LTS
+    """
+
+    result = pipeline.process_document(
+        text=text,
+        source_url="https://docs.example.com/managed/sprint-335",
+        source_title="What's new in Dynatrace ActiveGate 1.335",
+    )
+
+    facts = FactConverter.convert_to_facts(result)
+    supported_targets = {
+        fact.object
+        for fact in facts
+        if fact.predicate == "SUPPORTED_BY" and fact.subject == "1.335"
+    }
+
+    assert "Red Hat Enterprise Linux 8" in supported_targets
+    assert "Debian 13" in supported_targets
+    assert "Ubuntu 24.04" in supported_targets
+
+
 if __name__ == "__main__":
     test_entity_extraction()
     test_compatibility_extraction()
