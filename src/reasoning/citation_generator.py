@@ -251,7 +251,9 @@ class QueryProcessor:
         if field == "os_family":
             if "windows" in normalized:
                 return "windows"
-            if any(token in normalized for token in ["linux", "rhel", "ubuntu", "centos"]):
+            if any(
+                token in normalized for token in ["linux", "rhel", "ubuntu", "centos"]
+            ):
                 return "linux"
             return None
 

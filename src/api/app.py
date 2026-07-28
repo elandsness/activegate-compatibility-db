@@ -3,11 +3,11 @@ Flask API Backend for ActiveGate Compatibility Intelligence
 Provides REST endpoints for chat, compatibility checks, and data management.
 """
 
+import csv
+import json
 import logging
 import os
 import re
-import csv
-import json
 from io import StringIO
 from typing import Dict, List
 
@@ -175,7 +175,7 @@ def _parse_extensions_cell(raw_extensions: str) -> List[Dict]:
 
     if not isinstance(parsed, dict):
         raise ValueError(
-            "Extensions must be a JSON object map like {\"ext-id\": \"1.2.3\"}"
+            'Extensions must be a JSON object map like {"ext-id": "1.2.3"}'
         )
 
     extensions = []
@@ -376,9 +376,7 @@ def batch_check_csv():
     if upload is None:
         return (
             jsonify(
-                {
-                    "error": "No file uploaded. Use multipart/form-data with field 'file'"
-                }
+                {"error": "No file uploaded. Use multipart/form-data with field 'file'"}
             ),
             400,
         )

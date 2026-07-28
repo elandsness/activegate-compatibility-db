@@ -3,7 +3,6 @@ import io
 
 from src.api.app import app
 
-
 REQUIRED_HEADERS = [
     "current_activegate_version",
     "target_activegate_version",
