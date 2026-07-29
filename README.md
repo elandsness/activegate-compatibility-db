@@ -6,7 +6,6 @@ A system for checking ActiveGate upgrade compatibility for Dynatrace Managed env
 
 - **NLP-Powered Analysis**: Uses lightweight regex-based extraction (no heavy ML libraries required) to understand release notes
 - **Graph Database**: Neo4j for storing compatibility relationships
-- **CLI Interface**: Check compatibility via command line or config files
 - **Automated Updates**: Weekly data refresh from Dynatrace documentation
 - **Source Citations**: Links back to original documentation for explainability
 - **Batch CSV Checks**: Upload a CSV of ActiveGate environments and receive a CSV with compatibility findings columns appended
@@ -15,41 +14,28 @@ A system for checking ActiveGate upgrade compatibility for Dynatrace Managed env
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/elandsness/activegate-compatibility-db.git
-cd activegate-compatibility-db
+1. **Clone the repository**
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
+    ```bash
+    git clone https://github.com/elandsness/activegate-compatibility-db.git
+    cd activegate-compatibility-db
+    ```
 
-# Install dependencies
-pip install -r requirements.txt
+2. **Set up Docker and Docker Compose**
 
-# Install the package
-pip install -e .
-```
+    Ensure you have Docker and Docker Compose installed on your system. You can follow the official documentation to install them if they are not already present.
 
-### Basic Usage
+3. **Build and run the Docker container**
 
-```bash
-# Check compatibility (structured)
-agi check -c 1.330 -t 1.335
+    ```bash
+    docker-compose up -d
+    ```
 
-# Ask a natural language question
-agi ask "Can I upgrade from 1.330 to 1.335?"
+4. **Verify installation**
 
-# Check using a config file
-agi check-file config.yaml
+    After starting the Docker containers, you can verify that everything is set up correctly by accessing the API or UI components.
 
-# Get system status
-agi status
-```
-
-### Batch CSV API Usage
+## Batch CSV API Usage
 
 Download the template CSV:
 
@@ -93,45 +79,50 @@ Notes:
 - Missing `current_activegate_version` or `target_activegate_version` writes a row-level error and continues processing other rows.
 - Blank `managed_cluster_version` and `extensions` values are accepted.
 
-### Docker Usage
-
-```bash
-# Build the Docker image
-docker build -t dynatrace/activegate-compatibility .
-
-# Run with Docker Compose
-docker-compose up -d
-
-# Run CLI commands
-docker-compose run cli agi check -c 1.330 -t 1.335
-```
-
 ## Configuration
 
 ### Environment Variables
 
-| Variable         | Description          | Default                 |
-| ---------------- | -------------------- | ----------------------- |
-| `NEO4J_URI`      | Neo4j connection URI | `bolt://localhost:7687` |
-| `NEO4J_USER`     | Neo4j username       | `neo4j`                 |
-| `NEO4J_PASSWORD` | Neo4j password       | `password`              |
-| `LOG_LEVEL`      | Logging level        | `INFO`                  |
+Ensure that the following environment variables are set correctly. These can be configured in your Docker Compose file or as part of your deployment environment.
 
-### Config File Format
+| Variable         | Description                               | Default                 |
+| ---------------- | ----------------------------------------- | ----------------------- |
+| `NEO4J_URI`      | URI of the Neo4j database               | `bolt://localhost:7687` |
+| `NEO4J_USER`     | Username for accessing the Neo4j database | `neo4j`                 |
+| `NEO4J_PASSWORD` | Password for accessing the Neo4j database | `password`              |
+| `LOG_LEVEL`      | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO`                  |
 
-```yaml
-# config.yaml
-current_activegate_version: '1.330'
-target_activegate_version: '1.335'
-os_family: 'linux'
-os_version: '8'
-managed_cluster_version: '1.335'
-extensions:
-  - id: 'custom-logging'
-    version: '2.0'
-  - id: 'custom-metrics'
-    version: '1.5'
+## Troubleshooting
+
+### Common Issues
+
+#### Neo4j Connection Failed
+
+```bash
+# Check Neo4j is running
+docker ps | grep neo4j
+
+# Check connection settings
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=your_password
 ```
+
+#### No Compatibility Data Found
+
+If you do not see compatibility data, ensure that the data ingestion process has been run correctly.
+
+1. **Run data ingestion**
+
+    ```bash
+    docker-compose run cli agi check-file config.yaml
+    ```
+
+2. **Check data directory**
+
+    ```bash
+    ls -la data/
+    ```
 
 ## Architecture
 
@@ -193,63 +184,6 @@ activegate-compatibility-db/
 ├── Dockerfile        # Docker image
 ├── docker-compose.yml
 └── requirements.txt
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### Neo4j Connection Failed
-
-```bash
-# Check Neo4j is running
-docker ps | grep neo4j
-
-# Check connection settings
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=your_password
-```
-
-#### No Compatibility Data Found
-
-```bash
-# Run data ingestion
-python -m src.ingestion.scheduler
-
-# Check data directory
-ls -la data/
-```
-
-#### Import Errors
-
-```bash
-# Ensure virtual environment is activated
-source venv/bin/activate
-
-# Reinstall dependencies
-pip install -r requirements.txt
-```
-
-### Logging
-
-```bash
-# Set debug logging
-export LOG_LEVEL=DEBUG
-agi check -c 1.330 -t 1.335
-```
-
-### Getting Help
-
-```bash
-# Show CLI help
-agi --help
-
-# Show version
-agi version
-
-# Show status
-agi status
 ```
 
 ## License
