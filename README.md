@@ -66,7 +66,6 @@ docker compose logs -f
 ```
 
 Wait until Neo4j is healthy before relying on ingestion or compatibility checks.
->>>>>>> origin/main
 
 ### 3. Open the app
 
@@ -348,7 +347,6 @@ python -m src.api.app
 ```
 
 ### Run tests
->>>>>>> origin/main
 
 ```bash
 pytest tests/ -v
@@ -408,7 +406,6 @@ Common causes:
 
 Run ingestion first. The stack can start with an empty graph.
 
->>>>>>> origin/main
 ## License
 
 This is free and unencumbered software released into the public domain.
@@ -446,4 +443,3 @@ For more information, please refer to <https://unlicense.org/>
 5. Submit a pull request
 =======
 Anyone is free to copy, modify, publish, use, compile, sell, or distribute this software, in source or compiled form, for any purpose, commercial or non-commercial, and by any means.
->>>>>>> origin/main
