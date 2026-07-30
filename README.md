@@ -4,26 +4,19 @@ Graph-backed compatibility intelligence for Dynatrace ActiveGate upgrades.
 
 The system ingests release and ecosystem data, extracts compatibility facts, stores them in Neo4j, and serves results through a web UI and REST API.
 
-8 | - **NLP-Powered Analysis**: Uses lightweight regex-based extraction (no heavy ML libraries required) to understand release notes
-9 | - **Graph Database**: Neo4j for storing compatibility relationships
-10 | - **Automated Updates**: Weekly data refresh from Dynatrace documentation
-11 | - **Source Citations**: Links back to original documentation for explainability
-12 | - **Batch CSV Checks**: Upload a CSV of ActiveGate environments and receive a CSV with compatibility findings columns appended
+- **NLP-Powered Analysis**: Uses lightweight regex-based extraction (no heavy ML libraries required) to understand release notes
+- **Graph Database**: Neo4j for storing compatibility relationships
+- **Automated Updates**: Weekly data refresh from Dynatrace documentation
+- **Source Citations**: Links back to original documentation for explainability
+- **Batch CSV Checks**: Upload a CSV of ActiveGate environments and receive a CSV with compatibility findings columns appended
 
-14 | ## What Is Current
-15 | The web UI is the primary interface (port 3000).
-16 | The Flask API handles ingestion, checks, chat, batch CSV, and graph data (port 5000).
-17 | Neo4j stores versions, entities, and compatibility relationships (ports 7474 and 7687).
-18 | Ingestion sources: releases, managed releases, Hub catalog, EOS notices, custom URL.
-19 | Batch CSV check workflow is available in the UI and API.
-20 | Interactive graph exploration is available in the UI.
-
-- Web UI is the primary interface (port 3000)
-- Flask API handles ingestion, checks, chat, batch CSV, and graph data (port 5000)
-- Neo4j stores versions, entities, and compatibility relationships (ports 7474 and 7687)
-- Ingestion sources: releases, managed releases, Hub catalog, EOS notices, custom URL
-- Batch CSV check workflow is available in the UI and API
-- Interactive graph exploration is available in the UI
+## What Is Current
+- The web UI is the primary interface (port 3000).
+- The Flask API handles ingestion, checks, chat, batch CSV, and graph data (port 5000).
+- Neo4j stores versions, entities, and compatibility relationships (ports 7474 and 7687).
+- Ingestion sources: releases, managed releases, Hub catalog, EOS notices, custom URL.
+- Batch CSV check workflow is available in the UI and API.
+- Interactive graph exploration is available in the UI.
 
 ## Quick Start (Docker Compose)
 
