@@ -1,445 +1,349 @@
 # ActiveGate Compatibility Intelligence
 
-Graph-backed compatibility intelligence for Dynatrace ActiveGate upgrades.
+A graph-backed compatibility intelligence system for Dynatrace ActiveGate upgrades.
 
-The system ingests release and ecosystem data, extracts compatibility facts, stores them in Neo4j, and serves results through a web UI and REST API.
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org/)
 
-- **NLP-Powered Analysis**: Uses lightweight regex-based extraction (no heavy ML libraries required) to understand release notes
-- **Graph Database**: Neo4j for storing compatibility relationships
-- **Automated Updates**: Weekly data refresh from Dynatrace documentation
-- **Source Citations**: Links back to original documentation for explainability
-- **Batch CSV Checks**: Upload a CSV of ActiveGate environments and receive a CSV with compatibility findings columns appended
+## What It Does
 
-## What Is Current
-- The web UI is the primary interface (port 3000).
-- The Flask API handles ingestion, checks, chat, batch CSV, and graph data (port 5000).
-- Neo4j stores versions, entities, and compatibility relationships (ports 7474 and 7687).
-- Ingestion sources: releases, managed releases, Hub catalog, EOS notices, custom URL.
-- Batch CSV check workflow is available in the UI and API.
-- Interactive graph exploration is available in the UI.
+ActiveGate Compatibility Intelligence (AGI) helps you determine if your ActiveGate upgrade path is compatible with your environment. It scrapes Dynatrace release documentation, extracts compatibility relationships using regex-based NLP, stores them in Neo4j, and serves results through a web interface.
+
+**Key Capabilities:**
+- **Release Note Ingestion** - Scrapes and processes ActiveGate sprint release notes from Dynatrace docs
+- **Managed Cluster Compatibility** - Tracks Managed cluster version compatibility with ActiveGate releases
+- **Extension Catalog** - Indexes Dynatrace Hub extensions and their compatibility constraints
+- **EOS Tracking** - Monitors end-of-support announcements
+- **Compatibility Reasoning Engine** - Evaluates upgrade paths considering OS, Managed clusters, and extensions
+- **Batch CSV Processing** - Bulk-check compatibility for multiple environments
 
 ## Quick Start (Docker Compose)
 
-Use the consolidated stack in docker-compose.yml.
+### Prerequisites
+- Docker and Docker Compose installed
+- Internet access (for initial data ingestion)
 
-### 1. Start services
+### 1. Clone and Start
 
-<<<<<<< HEAD
-1. **Clone the repository**
-
-    ```bash
-    git clone https://github.com/elandsness/activegate-compatibility-db.git
-    cd activegate-compatibility-db
-    ```
-
-2. **Set up Docker and Docker Compose**
-
-    Ensure you have Docker and Docker Compose installed on your system. You can follow the official documentation to install them if they are not already present.
-
-3. **Build and run the Docker container**
-
-    ```bash
-    docker-compose up -d
-    ```
-
-4. **Verify installation**
-
-    After starting the Docker containers, you can verify that everything is set up correctly by accessing the API or UI components.
-
-## Batch CSV API Usage
-=======
 ```bash
+git clone https://github.com/elandsness/activegate-compatibility-db.git
+cd activegate-compatibility-db
+
+# Start all services
 docker compose up -d --build
 ```
 
-Services started:
+### 2. Verify Services
 
-- neo4j
-- api
-- web
-
-### 2. Monitor startup
+Services start in this order: Neo4j → API → Web UI (wait ~15 seconds total)
 
 ```bash
+# Check status
 docker compose ps
+
+# View logs
 docker compose logs -f
 ```
 
-Wait until Neo4j is healthy before relying on ingestion or compatibility checks.
+### 3. Access the Application
 
-### 3. Open the app
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Web UI | http://localhost:3000 | Main application interface |
+| API (direct) | http://localhost:5000/api/health | Backend health check |
+| Neo4j Browser | http://localhost:7474 | Graph database explorer |
 
-- Web UI: http://localhost:3000
-- API health: http://localhost:5000/api/health
-- Neo4j Browser: http://localhost:7474
+**Default Neo4j credentials:** `neo4j` / `password`
 
-Default Neo4j credentials in compose:
+### 4. Ingest Initial Data
 
-- Username: neo4j
-- Password: password
+1. Open http://localhost:3000
+2. Go to the **📥 Ingest Data** tab
+3. Click **"Start Ingestion"** under "Releases"
+4. Wait for success message (typically 30-60 seconds)
+5. Switch to other tabs to explore data
 
-### 4. Stop services
+### 5. Stop Services
 
 ```bash
+# Stop all services (keeps data)
 docker compose down
-```
 
-To remove data volumes too:
-
-```bash
+# Remove volumes (deletes Neo4j data!)
 docker compose down -v
 ```
-
-## Compose File Notes
-
-- docker-compose.yml: recommended default stack
-- docker-compose.web.yml: web deployment variant
-- docker-compose.simple.yml: reduced setup variant
-
-## Web UI Workflow
-
-The UI has five tabs.
-
-### 1. Ingest Data
-
-Purpose: scrape and load facts into Neo4j.
-
-Available sources:
-
-- Releases
-- Managed
-- Hub
-- EOS
-- All
-- Custom URL
-
-Typical flow:
-
-1. Open the Ingest Data tab.
-2. Choose Releases, Managed, Hub, EOS, All, or Custom URL.
-3. Start ingestion.
-4. Wait for success output with items_scraped and facts_extracted.
-
-Notes:
-
-- Requests go through /api/ingest via Nginx proxy.
-- External sources require internet access.
-- Data views refresh after successful ingestion.
-
-<<<<<<< HEAD
-## Configuration
-
-### Environment Variables
-
-Ensure that the following environment variables are set correctly. These can be configured in your Docker Compose file or as part of your deployment environment.
-
-| Variable         | Description                               | Default                 |
-| ---------------- | ----------------------------------------- | ----------------------- |
-| `NEO4J_URI`      | URI of the Neo4j database               | `bolt://localhost:7687` |
-| `NEO4J_USER`     | Username for accessing the Neo4j database | `neo4j`                 |
-| `NEO4J_PASSWORD` | Password for accessing the Neo4j database | `password`              |
-| `LOG_LEVEL`      | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO`                  |
-
-## Troubleshooting
-
-### Common Issues
-
-#### Neo4j Connection Failed
-
-```bash
-# Check Neo4j is running
-docker ps | grep neo4j
-
-# Check connection settings
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=your_password
-```
-
-#### No Compatibility Data Found
-
-If you do not see compatibility data, ensure that the data ingestion process has been run correctly.
-
-1. **Run data ingestion**
-
-    ```bash
-    docker-compose run cli agi check-file config.yaml
-    ```
-
-2. **Check data directory**
-
-    ```bash
-    ls -la data/
-    ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Interface (CLI)                    │
-│                         agi check/ask                        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                    Reasoning Engine                          │
-│         compatibility_reasoner + citation_generator          │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                      Storage Layer                           │
-│                    Neo4j Graph Database                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                   NLP Extraction Engine                      │
-│              Regex-based entity extraction (spaCy optional)  │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                   Data Ingestion Pipeline                   │
-│        scraper + eos_scraper + hub_scraper + scheduler      │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Web UI (Port 3000)                        │
+│                  Nginx reverse proxy + React SPA                   │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                 │ /api/* requests
+┌────────────────────────────────▼──────────────────────────────────┐
+│              Flask API (Port 5000)                                │
+│  ┌─────────────────┐ ┌───────────────┐ ┌──────────────────────┐  │
+│  │   Compatibility │ │   Ingestion   │ │     Data/Graph       │  │
+│  │     Reasoner    │ │   Scrapers    │ │     Endpoints        │  │
+│  └────────┬────────┘ └───────┬───────┘ └──────────────────────┘  │
+└───────────────────────────┼───┴───────────────────────────────────┘
+                            │ Neo4j Bolt protocol (7687)
+┌───────────────────────────▼───────────────────────────────────────┐
+│              Neo4j Graph Database (Ports 7474, 7687)             │
+│  Stores: Versions, Extensions, Compatibility relationships       │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### Component Details
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Frontend** | `frontend/index.html` | Single-page React app served by Nginx |
+| **Backend API** | `src/api/app.py` | Flask REST endpoints |
+| **Compatibility Engine** | `src/reasoning/` | GO/NO-GO decision logic |
+| **NLP Pipeline** | `src/nlp/` | Regex-based fact extraction |
+| **Scrapers** | `src/ingestion/` | Data collection from Dynatrace docs |
+| **Storage Layer** | `src/storage/` | Neo4j integration and queries |
+
+## Usage
+
+### Web UI (Port 3000)
+
+The web interface has five tabs:
+
+#### 📥 Ingest Data
+Scrape and load compatibility data from various sources:
+- **Releases** - ActiveGate sprint release notes
+- **Managed** - Managed cluster release notes  
+- **Hub** - Dynatrace Hub extensions catalog
+- **EOS** - End-of-support announcements
+- **All** - Scrape all sources (releases, managed, hub, EOS)
+- **Custom URL** - Any webpage to extract compatibility info
+
+#### 💬 Chat
+Ask natural language questions about upgrade compatibility:
+```
+Can I upgrade from ActiveGate 1.330 to 1.335 on RHEL 8 with Managed 1.335?
+
+Extensions: custom-ext:2.0.0
+```
+
+The system uses an interview-first flow, collecting required context before returning GO/NO-GO.
+
+#### 📄 Batch CSV Check
+Bulk compatibility checks:
+1. Click "Download Template" to get the CSV format
+2. Fill in one environment per row with:
+   - `current_activegate_version`
+   - `target_activegate_version`
+   - `managed_cluster_version` (optional)
+   - `os_family` (optional)
+   - `os_version` (optional)
+   - `extensions` as JSON object: `{"ext-id":"1.0.0"}`
+3. Upload CSV
+4. Download processed CSV with appended columns:
+   - `compatibility_status` (GO, GO_WITH_CAUTION, NO_GO, UNKNOWN)
+   - `compatibility_confidence` (0.0-1.0)
+   - `compatibility_issues`
+   - `compatibility_warnings`
+   - `compatibility_recommendations`
+   - `row_error` (for validation issues)
+
+#### 📊 Data
+View indexed data:
+- ActiveGate release versions count
+- Managed cluster version count
+- Total relationships in graph
+- Hub coverage summary and health status
+- **Clear Graph Data** - Destructive operation to reset the database
+
+#### 🕸️ Graph
+Interactive visualization of compatibility relationships:
+- Filter by ActiveGate version
+- Filter by relationship status (compatible, questionable, incompatible, unknown)
+- Search nodes by label
+- Click nodes to see properties and connections
+
+### CLI Tool
+
+Run compatibility checks from command line:
+
+```bash
+# Install (with Python 3.10+)
+pip install -r requirements.txt
+pip install -e .
+
+# Check a specific upgrade path
+agi check --current 1.330 --target 1.335 \
+    --os-family "Red Hat Enterprise Linux" \
+    --os-version 8 \
+    --managed 1.335 \
+    --extensions custom-ext:2.0
+
+# Ask natural language questions
+agi ask "Can I upgrade from 1.330 to 1.335?"
+
+# View system status
+agi status
+
+# Visualize the graph as Mermaid diagram
+agi visualize
+
+# Generate a config template
+agi init_config my-config.yaml
+```
+
+## API Endpoints
+
+### Health & Info
+- `GET /` - API documentation and endpoint list
+- `GET /api/health` - Service health status
+
+### Compatibility Queries
+- `POST /api/chat` - Natural language query
+  ```json
+  { "message": "Can I upgrade from 1.330 to 1.335?", "context": {} }
+  ```
+- `POST /api/check` - Structured check
+  ```json
+  {
+    "current": "1.330",
+    "target": "1.335",
+    "os_family": "Red Hat Enterprise Linux",
+    "managed_cluster_version": "1.335"
+  }
+  ```
+- `GET /api/check/template` - Download CSV template
+- `POST /api/check/batch-csv` - Bulk compatibility checks (multipart/form-data)
+
+### Ingestion
+- `POST /api/ingest` - Scrape and ingest data
+  ```json
+  { "source": "all" }
+  ```
+  Valid sources: `releases`, `managed`, `hub`, `eos`, `all`, `url`
+
+### Data Queries
+- `GET /api/data/versions` - ActiveGate versions list
+- `GET /api/data/managed-versions` - Managed cluster versions
+- `GET /api/data/relationships` - Relationship statistics
+- `GET /api/data/hub-summary` - Extension catalog coverage
+- `GET /api/data/graph` - Graph visualization data
+  - Query params: `activegate_version`, `limit`
+- `POST /api/admin/clear-graph` - Clear all graph data (destructive!)
+
+## Data Ingestion Workflow
+
+### How It Works
+1. **Scrape** - HTML pages from Dynatrace documentation are fetched
+2. **Parse** - Content is extracted and cleaned
+3. **Extract** - NLP pipeline identifies:
+   - Version numbers (ActiveGate, Managed, OS)
+   - Compatibility statements (compatible/incompatible/deprecated)
+   - Extension constraints
+4. **Store** - Facts are persisted to Neo4j as nodes and relationships
+
+### Relationship Types
+| Type | Meaning |
+|------|---------|
+| `COMPATIBLE_WITH` | Versions work together |
+| `INCOMPATIBLE_WITH` | Known incompatibility |
+| `UPGRADEABLE_TO` | Upgrade path available |
+| `SUPPORTED_BY` | Version supports a feature |
+| `DEPRECATED_IN` | Feature deprecated in this version |
+| `END_OF_SUPPORT` | Support ended for this version |
+
+## Configuration
+
+Environment variables (configure in `docker-compose.yml`):
+
+```yaml
+environment:
+  - NEO4J_URI=bolt://neo4j:7687
+  - NEO4J_USER=neo4j
+  - NEO4J_PASSWORD=password
+  - NEO4J_DATABASE=neo4j
+  - PORT=5000
 ```
 
 ## Development
 
-### Running Tests
-=======
-### 2. Chat
-
-Purpose: interactive upgrade guidance.
-
-The chat endpoint uses an interview-first flow and collects required context before GO or NO_GO:
-
-- current ActiveGate version
-- target ActiveGate version
-- Managed cluster version
-- OS family
-- OS version
-- extensions with versions
-
-Example prompt:
-
-Can I upgrade from ActiveGate 1.330 to 1.335 on RHEL 8 with Managed 1.335 and extensions: custom-ext:2.0.0?
-
-### 3. Batch CSV Check
-
-Purpose: evaluate multiple environments in one run.
-
-Flow:
-
-1. Download template.
-2. Fill one environment per row.
-3. Upload CSV.
-4. Download processed CSV with findings columns appended.
-
-Required headers:
-
-- current_activegate_version
-- target_activegate_version
-- managed_cluster_version
-- os_family
-- os_version
-- extensions
-
-Extensions field format (JSON object as cell text):
-
-{"custom-ext":"2.0.0","another-ext":"1.5.2"}
-
-Appended output columns:
-
-- compatibility_status
-- compatibility_confidence
-- compatibility_issues
-- compatibility_warnings
-- compatibility_recommendations
-- row_error
-
-Behavior:
-
-- UTF-8 CSV required
-- maximum 5000 rows
-- missing version fields are marked per row in row_error
-- blank managed_cluster_version and extensions are accepted
-
-### 4. Data
-
-Purpose: inspect what is currently loaded.
-
-Displays:
-
-- ActiveGate release versions
-- Managed release versions
-- relationship counts by type
-- Hub coverage summary
-
-Includes Clear Graph Data, which is destructive.
-
-### 5. Graph
-
-Purpose: inspect compatibility relationships visually.
-
-Features:
-
-- load graph payload from /api/data/graph
-- filter by ActiveGate version
-- filter by relationship status (compatible, questionable, incompatible, unknown)
-- search nodes by label
-- inspect node properties and connected links
-- fit and rebalance graph layout
-
-## API Surface
-
-### Health and service info
-
-- GET /
-- GET /api/health
-
-### Compatibility
-
-- POST /api/chat
-- POST /api/check
-- GET /api/check/template
-- POST /api/check/batch-csv
-
-### Ingestion
-
-- POST /api/ingest
-
-Supported source values:
-
-- releases
-- managed
-- hub
-- eos
-- all
-- url
-
-### Data and graph
-
-- GET /api/data/versions
-- GET /api/data/managed-versions
-- GET /api/data/relationships
-- GET /api/data/hub-summary
-- GET /api/data/graph
-- POST /api/admin/clear-graph
-
-## Local Development
-
-### Python environment
+### Local Python Environment
 
 ```bash
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate    # Windows
+
+# Install dependencies
 pip install -r requirements.txt
-pip install -e .
-```
 
-### Run API directly
-
-Neo4j must be reachable.
-
-```bash
+# Run the API directly (requires Neo4j running)
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
 export NEO4J_PASSWORD=password
 python -m src.api.app
 ```
 
-### Run tests
+### Running Tests
 
 ```bash
-pytest tests/ -v
+pytest tests/ -v --cov=src/
 ```
 
-## Project Layout
+### Modifying the Frontend
 
-```text
-src/
-  api/          Flask API
-  ingestion/    release, managed, hub, eos scrapers
-  nlp/          compatibility fact extraction
-  reasoning/    compatibility reasoning and citations
-  storage/      Neo4j connection, population, and graph queries
-frontend/
-  index.html    web UI served by nginx
-tests/
-docker-compose.yml
-Dockerfile.simple
-```
+Edit `frontend/index.html` and reload your browser (Ctrl+F5). The file is served directly by Nginx without rebuilding containers.
 
-<<<<<<< HEAD
-=======
 ## Troubleshooting
 
-### UI is not reachable
-
+### Neo4j connection fails
 ```bash
-docker compose logs web
-curl http://localhost:3000
+docker compose logs neo4j
+# Verify http://localhost:7474 works with neo4j/password
 ```
 
-### API errors
+### Ingestion timeouts or errors
+- Ensure internet access is available
+- Check if Dynatrace docs are accessible
+- Look for source page structure changes in scraper code
 
+### API returns errors
 ```bash
 docker compose logs api
 curl http://localhost:5000/api/health
 ```
 
-### Neo4j unavailable
-
+### Web UI not loading
 ```bash
-docker compose logs neo4j
+docker compose logs web
+curl http://localhost:3000
 ```
 
-Then verify http://localhost:7474 is reachable and credentials match compose settings.
+## Project Structure
 
-### Ingestion fails
-
-Common causes:
-
-- outbound network not available
-- source page structure changed
-- external request timeout or blocking
-
-### Data tabs are empty
-
-Run ingestion first. The stack can start with an empty graph.
+```
+activegate-compatibility-db/
+├── src/
+│   ├── api/          # Flask REST API endpoints
+│   ├── ingestion/    # Data scrapers (releases, managed, hub, eos)
+│   ├── nlp/          # Regex-based NLP for fact extraction
+│   ├── reasoning/    # Compatibility decision engine
+│   └── storage/      # Neo4j integration and queries
+├── frontend/
+│   ├── index.html    # React SPA (single file)
+│   └── nginx.conf    # Nginx reverse proxy config
+├── tests/            # Unit and integration tests
+├── docker-compose.yml       # Consolidated stack (Neo4j + API + Web)
+├── Dockerfile.simple        # Python runtime image for API
+└── requirements.txt         # Python dependencies
+```
 
 ## License
 
 This is free and unencumbered software released into the public domain.
 
-<<<<<<< HEAD
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <https://unlicense.org/>
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-=======
 Anyone is free to copy, modify, publish, use, compile, sell, or distribute this software, in source or compiled form, for any purpose, commercial or non-commercial, and by any means.
+
+For more information, please refer to [https://unlicense.org](https://unlicense.org)
