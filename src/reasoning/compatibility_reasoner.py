@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
-logging.basicConfig(level=logging.INFO)
+# Note: the app factory calls logging.basicConfig; leaf modules should not.
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +80,43 @@ class CompatibilityReasoner:
             graph_query: Optional GraphQuery instance for database lookups
         """
         self.graph_query = graph_query
+        self._deprecated_cache: set[str] | None = None
+        self._eos_cache: set[str] | None = None
         self.rules = self._load_compatibility_rules()
+
+    def _load_deprecated_versions(self) -> set[str]:
+        """Load deprecated version list from the graph, falling back to hardcoded defaults."""
+        if self._deprecated_cache is not None:
+            return self._deprecated_cache
+        if self.graph_query:
+            try:
+                rows = self.graph_query.graph_conn.execute("""
+                    MATCH (v:ActiveGateVersion)-[:DEPRECATED_IN]->(dep)
+                    RETURN v.version AS version
+                """)
+                self._deprecated_cache = {r["version"] for r in rows}
+                return self._deprecated_cache
+            except Exception:
+                pass  # Fall through to hardcoded defaults
+        self._deprecated_cache = {"1.300", "1.310", "1.320", "1.325"}
+        return self._deprecated_cache
+
+    def _load_eos_versions(self) -> set[str]:
+        """Load end-of-support version list from the graph, falling back to hardcoded defaults."""
+        if self._eos_cache is not None:
+            return self._eos_cache
+        if self.graph_query:
+            try:
+                rows = self.graph_query.graph_conn.execute("""
+                    MATCH (v:ActiveGateVersion)-[:END_OF_SUPPORT]->(eos)
+                    RETURN v.version AS version
+                """)
+                self._eos_cache = {r["version"] for r in rows}
+                return self._eos_cache
+            except Exception:
+                pass  # Fall through to hardcoded defaults
+        self._eos_cache = {"1.280", "1.290", "1.300"}
+        return self._eos_cache
 
     def _load_compatibility_rules(self) -> Dict:
         """Load compatibility rules and thresholds."""
@@ -478,12 +514,11 @@ class CompatibilityReasoner:
         return issues, warnings
 
     def _check_deprecations(self, version: str) -> tuple:
-        """Check for deprecated versions."""
+        """Check for deprecated versions using graph-first lookup."""
         issues = []
         warnings = []
 
-        # Known deprecated versions (would come from NLP extraction in production)
-        deprecated_versions = ["1.300", "1.310", "1.320", "1.325"]
+        deprecated_versions = self._load_deprecated_versions()
 
         if version in deprecated_versions:
             warnings.append(
@@ -498,11 +533,10 @@ class CompatibilityReasoner:
         return issues, warnings
 
     def _check_end_of_support(self, version: str) -> List[CompatibilityIssue]:
-        """Check for end-of-support versions."""
+        """Check for end-of-support versions using graph-first lookup."""
         issues = []
 
-        # Known end-of-support versions
-        eos_versions = ["1.280", "1.290", "1.300"]
+        eos_versions = self._load_eos_versions()
 
         if version in eos_versions:
             issues.append(
