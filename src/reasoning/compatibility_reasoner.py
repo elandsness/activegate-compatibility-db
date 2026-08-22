@@ -1,10 +1,33 @@
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Dict, List, Optional
 
 # Note: the app factory calls logging.basicConfig; leaf modules should not.
 logger = logging.getLogger(__name__)
+
+
+def _structured_log(logger, level, msg, **kwargs):  # type: ignore[no-untyped-def]
+    """Log with correlation_id and context when available."""
+    ctx = " ".join(f"{k}={v}" for k, v in kwargs.items())
+    extra = {"correlation_id": kwargs.get("correlation_id", "")} if kwargs else {}
+    log_fn = getattr(logger, level)
+    log_fn("%s %s", msg.strip(), ctx, extra=extra)  # type: ignore[no-untyped-call]
+
+
+def _cache_key(current: str, target: str, os_family: str | None, os_ver: str | None, managed: str | None, exts: list | None) -> str:
+    """Create a cache key from check parameters."""
+    parts = {
+        "c": current, "t": target,
+        "o": os_family or "", "ov": os_ver or "",
+        "m": managed or "", "e": json.dumps(exts or [], sort_keys=True),
+    }
+    raw = json.dumps(parts, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
 
 
 class CompatibilityStatus(Enum):
@@ -79,10 +102,47 @@ class CompatibilityReasoner:
         Args:
             graph_query: Optional GraphQuery instance for database lookups
         """
+        from src.reasoning.rules_config import load_rules  # avoid circular import
+
         self.graph_query = graph_query
         self._deprecated_cache: set[str] | None = None
         self._eos_cache: set[str] | None = None
-        self.rules = self._load_compatibility_rules()
+        self.rules = load_rules()
+
+    def _make_cache(self):  # type: ignore[no-untyped-def]
+        """Create LRU cache for check_upgrade_compatibility (256 entries)."""
+        return lru_cache(maxsize=256)(self._check_impl)
+
+    @property
+    def _cached_check(self):  # type: ignore[no-untyped-def]
+        return self._make_cache()
+
+    def check_upgrade_compatibility(
+        self,
+        current_version: str,
+        target_version: str,
+        os_family: Optional[str] = None,
+        os_version: Optional[str] = None,
+        managed_cluster_version: Optional[str] = None,
+        extensions: Optional[List[Dict]] = None,
+        use_graph: bool = False,
+    ) -> "CompatibilityResult":
+        """Check upgrade compatibility — cached via LRU cache."""
+        _structured_log(
+            logger, "info",
+            f"Compatibility check: {current_version} -> {target_version}",
+            correlation_id=getattr(self, "_correlation_id", ""),
+        )
+        return self._cached_check(  # type: ignore[no-any-return]
+            current_version, target_version, os_family, os_version,
+            managed_cluster_version, extensions, use_graph,
+        )
+
+    def clear_cache(self) -> None:
+        """Clear the LRU check cache (useful between test runs)."""
+        if hasattr(self, "_cached_check"):
+            self._cached_check.cache_clear()  # type: ignore[union-attr]
+
 
     def _load_deprecated_versions(self) -> set[str]:
         """Load deprecated version list from the graph, falling back to hardcoded defaults."""
@@ -98,7 +158,8 @@ class CompatibilityReasoner:
                 return self._deprecated_cache
             except Exception:
                 pass  # Fall through to hardcoded defaults
-        self._deprecated_cache = {"1.300", "1.310", "1.320", "1.325"}
+        from src.reasoning.rules_config import DEFAULT_DEPRECATED  # avoid circular import
+        self._deprecated_cache = DEFAULT_DEPRECATED.copy()
         return self._deprecated_cache
 
     def _load_eos_versions(self) -> set[str]:
@@ -115,7 +176,8 @@ class CompatibilityReasoner:
                 return self._eos_cache
             except Exception:
                 pass  # Fall through to hardcoded defaults
-        self._eos_cache = {"1.280", "1.290", "1.300"}
+        from src.reasoning.rules_config import DEFAULT_EOS
+        self._eos_cache = DEFAULT_EOS.copy()
         return self._eos_cache
 
     def _load_compatibility_rules(self) -> Dict:
@@ -138,7 +200,7 @@ class CompatibilityReasoner:
             "managed_cluster_check": True,
         }
 
-    def check_upgrade_compatibility(
+    def _check_impl(
         self,
         current_version: str,
         target_version: str,
@@ -148,22 +210,8 @@ class CompatibilityReasoner:
         extensions: Optional[List[Dict]] = None,
         use_graph: bool = False,
     ) -> CompatibilityResult:
-        """
-        Check if an upgrade from current to target ActiveGate version is compatible.
-
-        Args:
-            current_version: Current ActiveGate version (e.g., '1.330')
-            target_version: Target ActiveGate version (e.g., '1.335')
-            os_family: Operating system family (windows, linux, etc.)
-            os_version: Specific OS version
-            managed_cluster_version: Dynatrace Managed cluster version
-            extensions: List of dicts with extension info {'id': str, 'version': str}
-            use_graph: Whether to query the graph database
-
-        Returns:
-            CompatibilityResult with go/no-go decision and details
-        """
-        logger.info(f"Checking upgrade: {current_version} -> {target_version}")
+        """Core check logic (called through cached public method)."""
+        _structured_log(logger, "info", f"Checking upgrade: {current_version} -> {target_version}")
 
         issues = []
         warnings = []
