@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from io import StringIO
 from typing import Any, Dict, List
 
@@ -26,6 +28,41 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+
+
+class IngestRateLimiter:
+    """Simple in-memory rate limiter to prevent rapid repeated ingest calls."""
+
+    def __init__(self, min_interval_seconds: float = 30.0):
+        self._min_interval = min_interval_seconds
+        self._last_time: float = 0.0
+        self._lock = threading.Lock()
+        self._ingesting = False
+
+    def allow(self) -> bool:
+        """Return True if an ingest is allowed right now."""
+        with self._lock:
+            if self._ingesting:
+                return False
+            elapsed = time.monotonic() - self._last_time
+            if elapsed < self._min_interval:
+                return False
+            return True
+
+    def start(self) -> None:
+        """Mark that an ingest is in progress."""
+        with self._lock:
+            self._ingesting = True
+
+    def finish(self) -> None:
+        """Mark that an ingest has completed and reset the timer."""
+        with self._lock:
+            self._last_time = time.monotonic()
+            self._ingesting = False
+
+
+# Singleton rate limiter for the /api/ingest endpoint
+_ingest_limiter = IngestRateLimiter(min_interval_seconds=30.0)
 
 BATCH_REQUIRED_HEADERS = [
     "current_activegate_version",
@@ -526,6 +563,14 @@ def ingest_data():
     data = request.get_json(force=True, silent=True) or {}
     source = data.get("source", "releases")
 
+    # Rate-limit to prevent abuse of the scraping pipeline
+    if not _ingest_limiter.allow():
+        return jsonify({
+            "error": "Ingest is currently in progress or was recently run. "
+                     "Please wait 30 seconds between ingest calls.",
+        }), 429
+
+    _ingest_limiter.start()
     try:
         if source == "all":
             from src.ingestion.eos_scraper import EndOfSupportScraper
@@ -760,6 +805,8 @@ def ingest_data():
     except Exception as e:
         logger.error(f"Ingest error: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        _ingest_limiter.finish()
 
 
 @app.route("/api/data/versions", methods=["GET"])

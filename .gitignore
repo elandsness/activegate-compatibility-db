@@ -125,3 +125,8 @@ temp_*
 
 # Local Boost filter/config overrides
 .boost/
+# Debug scripts
+debug_links.py
+debug_scrape.py
+debug_visualize.py
+debug_visualize.py
