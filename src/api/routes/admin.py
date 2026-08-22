@@ -4,6 +4,7 @@ import logging
 
 from flask import Blueprint, jsonify
 
+from src.api.auth import auth_required
 from src.api.helpers import make_graph_connection
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ admin_bp = Blueprint("admin", __name__)
 
 
 @admin_bp.route("/admin/clear-graph", methods=["POST"])
+@auth_required
 def clear_graph():
     """Clear all Neo4j graph data. Use for resetting ingestion state."""
     graph_conn = make_graph_connection()

@@ -5,6 +5,8 @@ from typing import Dict, List
 import requests
 from bs4 import BeautifulSoup
 
+from src.ingestion.retry import retry
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class EndOfSupportScraper:
             }
         )
 
+    @retry(max_retries=3, base_delay=1.0)
     def scrape_end_of_support(self) -> List[Dict]:
         try:
             response = self.session.get(self.base_url)

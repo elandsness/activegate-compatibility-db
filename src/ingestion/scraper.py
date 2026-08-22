@@ -6,6 +6,8 @@ from typing import Dict, List
 import requests
 from bs4 import BeautifulSoup
 
+from src.ingestion.retry import retry
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class ReleaseNotesScraper:
             }
         )
 
+    @retry(max_retries=3, base_delay=1.0)
     def scrape_release_notes(self) -> List[Dict]:
         """
         Scrape the ActiveGate release notes section and extract individual sprint releases.
@@ -162,12 +165,11 @@ class ReleaseNotesScraper:
 
         return ""
 
+    @retry(max_retries=3, base_delay=1.5)
     def _scrape_release_page(self, url: str) -> str:
-        """
-        Scrape content from an individual release page.
-        """
+        """Scrape content from an individual release page."""
         try:
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(url, timeout=(10, 30))
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, "lxml")

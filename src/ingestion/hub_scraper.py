@@ -8,6 +8,8 @@ from typing import Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from src.ingestion.retry import retry
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ class HubExtensionsScraper:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": self.USER_AGENT})
 
+    @retry(max_retries=3, base_delay=1.0)
     def scrape_extensions(self) -> List[Dict]:
         """Backward-compatible wrapper used by tests and legacy callers."""
         items = self.scrape_managed_catalog(include_feeds=True)
@@ -104,14 +107,16 @@ class HubExtensionsScraper:
         logger.info("Loaded %d managed Hub items", len(managed_items))
         return managed_items
 
+    @retry(max_retries=3, base_delay=2.0)
     def _fetch_catalog(self) -> Dict:
-        response = self.session.get(self.PUBLIC_HUB_API, timeout=60)
+        response = self.session.get(self.PUBLIC_HUB_API, timeout=(10, 60))
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or "technologies" not in payload:
             raise ValueError("Unexpected Hub catalog payload shape")
         return payload
 
+    @retry(max_retries=3, base_delay=1.5)
     def _fetch_release_feed(self, item: Dict) -> Dict:
         candidates = self._candidate_feed_paths(item)
         for path in candidates:

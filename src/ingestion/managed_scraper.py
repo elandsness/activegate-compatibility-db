@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from src.ingestion.retry import retry
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -27,10 +29,11 @@ class ManagedReleaseNotesScraper:
             }
         )
 
+    @retry(max_retries=3, base_delay=1.0)
     def scrape_release_notes(self) -> List[Dict]:
         """Scrape Managed sprint pages and return release-note documents."""
         try:
-            response = self.session.get(self.base_url, timeout=30)
+            response = self.session.get(self.base_url, timeout=(10, 30))
             response.raise_for_status()
             html_text = response.text
 
