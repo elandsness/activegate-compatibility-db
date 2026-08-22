@@ -1,0 +1,86 @@
+/* Global styles for ActiveGate Compatibility UI */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a2e; color: #eee; min-height: 100vh;
+}
+
+.app       { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.header    { text-align: center; padding: 30px 0; border-bottom: 1px solid #333; margin-bottom: 30px; }
+.header h1 { font-size: 2rem; color: #00d4ff; margin-bottom: 10px; }
+.header p  { color: #888; }
+
+/* ── Tabs ───────────────────────────────────────── */
+.tabs       { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab        { padding: 12px 24px; background: #2a2a4a; border: none; border-radius: 8px; color: #aaa; cursor: pointer; font-size: 1rem; transition: all .2s; }
+.tab.active { background: #00d4ff; color: #1a1a2e; }
+.tab:hover:not(.active) { background: #3a3a5a; }
+
+/* ── Panels ─────────────────────────────────────── */
+.chat-container       { background: #2a2a4a; border-radius: 12px; padding: 20px; height: 500px; display: flex; flex-direction: column; }
+.messages             { flex: 1; overflow-y: auto; padding: 10px; }
+.message              { margin-bottom: 15px; padding: 15px; border-radius: 10px; max-width: 80%; }
+.message.user         { background: #00d4ff; color: #1a1a2e; margin-left: auto; }
+.message.bot          { background: #3a3a5a; }
+.message .version-info { font-size: .85rem; opacity: .8; margin-top: 5px; }
+.input-container      { display: flex; gap: 10px; margin-top: 15px; }
+.input-container input[type="text"] { flex: 1; padding: 15px; border: none; border-radius: 8px; background: #1a1a2e; color: #eee; font-size: 1rem; }
+.input-container input:focus        { outline: 2px solid #00d4ff; }
+.input-container button             { padding: 15px 30px; background: #00d4ff; border: none; border-radius: 8px; color: #1a1a2e; font-size: 1rem; cursor: pointer; font-weight: bold; }
+.input-container button:disabled    { background: #555; cursor: not-allowed; }
+
+.data-container       { background: #2a2a4a; border-radius: 12px; padding: 20px; }
+
+/* ── Stats ──────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+.stat-card   { background: #3a3a5a; padding: 20px; border-radius: 8px; text-align: center; }
+.stat-card h3 { font-size: 2rem; color: #00d4ff; }
+.stat-card p  { color: #888; margin-top: 5px; }
+
+/* ── Data list ──────────────────────────────────── */
+.data-list    { max-height: 400px; overflow-y: auto; }
+.data-item    { background: #3a3a5a; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.status-badge { padding: 5px 15px; border-radius: 20px; font-size: .85rem; font-weight: bold; }
+.status-badge.go      { background: #22c55e; color: #fff; }
+.status-badge.no-go   { background: #ef4444; color: #fff; }
+.status-badge.caution { background: #f59e0b; color: #fff; }
+
+/* ── Ingest form ────────────────────────────────── */
+.ingest-form  { background: #3a3a5a; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+.ingest-form textarea { width: 100%; height: 150px; padding: 15px; border: none; border-radius: 8px; background: #1a1a2e; color: #eee; font-size: 1rem; margin: 10px 0; resize: vertical; }
+.ingest-form button { padding: 12px 24px; background: #00d4ff; border: none; border-radius: 8px; color: #1a1a2e; font-size: 1rem; cursor: pointer; font-weight: bold; }
+
+/* ── Misc ───────────────────────────────────────── */
+.loading       { text-align: center; padding: 20px; color: #888; }
+.progress-track { margin-top: 14px; width: 100%; height: 10px; border-radius: 999px; background: #24243d; overflow: hidden; border: 1px solid #3f3f60; }
+.progress-bar   { width: 35%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #00d4ff, #59e0ff); animation: ingest-progress 1.2s ease-in-out infinite; }
+@keyframes ingest-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+
+/* ── Graph tab ──────────────────────────────────── */
+.graph-toolbar    { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.graph-toolbar input, .graph-toolbar select { background: #1a1a2e; border: 1px solid #4a4a6f; border-radius: 6px; color: #eee; padding: 9px 10px; }
+.graph-toolbar button { background: #2d9bb8; color: #fff; border: none; border-radius: 6px; padding: 9px 12px; cursor: pointer; font-weight: bold; }
+.graph-toolbar button:disabled { opacity: .6; cursor: not-allowed; }
+.graph-canvas     { width: 100%; height: 620px; border: 1px solid #4a4a6f; border-radius: 10px; background: radial-gradient(circle at 20% 20%, #232348 0%, #171730 55%, #111123 100%); }
+.graph-layout     { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+.graph-sidepanel  { background: #313154; border: 1px solid #4a4a6f; border-radius: 10px; min-height: 620px; padding: 12px; }
+.graph-sidepanel h4 { color: #9ddfff; margin-bottom: 8px; }
+.graph-sidepanel p  { color: #d1d5db; font-size: .9rem; line-height: 1.45; }
+.panel-section      { margin-top: 12px; border-top: 1px solid #4a4a6f; padding-top: 10px; }
+.panel-kv           { display: flex; justify-content: space-between; gap: 12px; font-size: .88rem; padding: 4px 0; }
+.panel-kv span:first-child { color: #a1a1aa; }
+.panel-kv span:last-child  { color: #f1f5f9; text-align: right; word-break: break-word; }
+.panel-list         { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.panel-item         { background: #262645; border: 1px solid #3f3f60; border-radius: 8px; padding: 8px; font-size: .84rem; color: #dbe4ef; }
+.panel-badge        { display: inline-block; margin-top: 6px; font-size: .76rem; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; }
+.panel-badge.compatible    { color: #86efac; border-color: #22c55e; }
+.panel-badge.questionable  { color: #fcd34d; border-color: #f59e0b; }
+.panel-badge.incompatible  { color: #fda4af; border-color: #ef4444; }
+.panel-badge.unknown       { color: #cbd5e1; border-color: #94a3b8; }
+.graph-legend     { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; color: #ddd; font-size: .9rem; }
+.legend-item      { display: flex; align-items: center; gap: 8px; }
+.legend-swatch    { width: 18px; height: 4px; border-radius: 999px; }
+
+@media (max-width: 900px) { .graph-layout        { grid-template-columns: 1fr; } .graph-sidepanel { min-height: 220px; } .graph-canvas    { height: 520px; } }

@@ -129,4 +129,6 @@ temp_*
 debug_links.py
 debug_scrape.py
 debug_visualize.py
-debug_visualize.py
+
+# Scraper output
+scraped_releases.json
