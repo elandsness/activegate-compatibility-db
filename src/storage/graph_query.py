@@ -1,8 +1,6 @@
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from src.storage.graph_connection import GraphConnection
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -48,13 +46,8 @@ class GraphQuery:
         "openSUSE",
     }
 
-    def __init__(self, graph_conn: GraphConnection):
-        """
-        Initialize graph query engine.
-
-        Args:
-            graph_conn: GraphConnection instance
-        """
+    def __init__(self, graph_conn):  # type: ignore[type-arg]
+        """Initialize graph query engine (accepts any connection-like object)."""
         self.graph_conn = graph_conn
 
     def check_activegate_compatibility(

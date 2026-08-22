@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.nlp.nlp_pipeline import ExtractedFact
-from src.storage.graph_connection import GraphConnection
+from src.storage.connection_manager import get_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,15 +12,10 @@ logger = logging.getLogger(__name__)
 class GraphPopulator:
     """Populates Neo4j graph with extracted compatibility facts."""
 
-    def __init__(self, graph_conn: GraphConnection):
-        """
-        Initialize graph populator.
-
-        Args:
-            graph_conn: GraphConnection instance
-        """
-        self.graph_conn = graph_conn
-        if not self.graph_conn.connect():
+    def __init__(self, graph_conn=None):  # type: ignore[assignment]
+        """Initialize graph populator (accepts any connection-like object)."""
+        self.graph_conn = graph_conn or get_manager()
+        if not self.graph_conn.is_connected:
             logger.error(
                 "GraphPopulator could not connect to Neo4j during initialization"
             )

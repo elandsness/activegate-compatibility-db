@@ -13,22 +13,17 @@ import yaml
 
 from src.reasoning.citation_generator import QueryProcessor
 from src.reasoning.compatibility_reasoner import CompatibilityReasoner
-from src.storage.graph_connection import GraphConnection
+from src.storage.connection_manager import get_manager
 from src.storage.graph_query import GraphQuery
 from src.storage.graph_visualizer import GraphVisualizer
 
 
-def _make_graph_connection() -> GraphConnection:
-    return GraphConnection(
-        uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-        user=os.environ.get("NEO4J_USER", "neo4j"),
-        password=os.environ.get("NEO4J_PASSWORD", "password"),
-        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
-    )
+_mgr = get_manager()
+_connected = _mgr.connect()
 
 
 def _initialize_components():
-    graph_conn = _make_graph_connection()
+    graph_conn = _mgr if _connected else None
     connected = graph_conn.connect()
     if connected:
         graph_query = GraphQuery(graph_conn)
@@ -43,7 +38,7 @@ def _initialize_components():
 
 # Initialize components
 graph_conn, graph_query, reasoner, query_processor = _initialize_components()
-connected = graph_query is not None
+connected = connected
 
 
 @click.group()

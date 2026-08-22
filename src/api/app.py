@@ -13,7 +13,7 @@ from flask_cors import CORS
 from src.nlp.nlp_pipeline import NLPPipeline
 from src.reasoning.citation_generator import QueryProcessor
 from src.reasoning.compatibility_reasoner import CompatibilityReasoner
-from src.storage.graph_connection import GraphConnection
+from src.storage.connection_manager import make_manager_for_app
 from src.storage.graph_populater import GraphPopulator
 
 logging.basicConfig(level=logging.INFO)
@@ -26,16 +26,10 @@ def _make_app() -> Flask:
     CORS(app)
 
     # --- Shared components ---------------------------------------------------
-    graph_conn = GraphConnection(
-        uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-        user=os.environ.get("NEO4J_USER", "neo4j"),
-        password=os.environ.get("NEO4J_PASSWORD", "password"),
-        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
-    )
-
-    connected = graph_conn.connect()
+    mgr = make_manager_for_app(app)
+    connected = mgr.connect()
     if connected:
-        graph_query = GraphQuery(graph_conn)
+        graph_query = GraphQuery(mgr)
         reasoner = CompatibilityReasoner(graph_query=graph_query)
         logger.info("Components initialised with live Neo4j connection.")
     else:

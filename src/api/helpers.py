@@ -9,19 +9,17 @@ from io import StringIO
 from typing import Any, Dict, List, Optional
 
 from src.nlp.nlp_pipeline import FactConverter, NLPPipeline
-from src.storage.graph_connection import GraphConnection
+from src.storage.connection_manager import get_manager
 
 logger = logging.getLogger(__name__)
 
 
-def make_graph_connection() -> GraphConnection:
-    """Create a GraphConnection from environment variables."""
-    return GraphConnection(
-        uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-        user=os.environ.get("NEO4J_USER", "neo4j"),
-        password=os.environ.get("NEO4J_PASSWORD", "password"),
-        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
-    )
+def make_graph_connection():
+    """Return a session-scoped Neo4j connection (singleton under the hood)."""
+    mgr = get_manager()
+    if not mgr.is_connected:
+        mgr.connect()
+    return mgr
 
 
 def process_documents_with_nlp(documents: List[Dict]) -> Dict:

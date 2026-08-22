@@ -7,9 +7,12 @@ Can output as Mermaid diagram format for rendering in various tools.
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from src.storage.graph_connection import GraphConnection
+if TYPE_CHECKING:
+    from neo4j import Session
+
+from src.storage.connection_manager import get_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,29 +31,23 @@ class GraphVisualizer:
     Generates visualizations of the ActiveGate compatibility graph.
     """
 
-    def __init__(self, graph_conn: Optional[GraphConnection] = None):
-        """
-        Initialize the graph visualizer.
+    def __init__(self, mgr: Optional["object"] = None):
+        self._mgr = mgr or get_manager()
 
-        Args:
-            graph_conn: Optional GraphConnection instance. If not provided,
-                       will attempt to create from environment variables.
-        """
-        self.graph_conn = graph_conn
+    def _get_connection(self) -> "object":
+        if not self._mgr.is_connected:
+            self._mgr.connect()
+        return self._mgr
 
-    def _get_connection(self) -> GraphConnection:
-        """Get or create a graph connection."""
-        if self.graph_conn is None:
-            import os
+    # -- keep the old alias for compatibility ---------------------------------
+    @property
+    def graph_conn(self):  # type: ignore[no-redef]
+        """Backwards-compat property so existing code still works."""
+        return self._get_connection()
 
-            self.graph_conn = GraphConnection(
-                uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-                user=os.environ.get("NEO4J_USER", "neo4j"),
-                password=os.environ.get("NEO4J_PASSWORD", "password"),
-                database=os.environ.get("NEO4J_DATABASE", "neo4j"),
-            )
-            self.graph_conn.connect()
-        return self.graph_conn
+    @graph_conn.setter
+    def graph_conn(self, val):  # type: ignore[no-redef]
+        self._mgr = val
 
     def get_graph_data(
         self, activegate_versions: Optional[List[str]] = None, limit: int = 50
