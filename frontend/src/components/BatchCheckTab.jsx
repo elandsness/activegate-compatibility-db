@@ -1,7 +1,7 @@
 /* Batch tab — upload a CSV, get results back as a downloadable file. */
 
 import { useState } from 'react'
-import { downloadTemplate, uploadBatch } from '../api'
+import { downloadTemplate, uploadBatch } from '../../api'
 
 export default function BatchCheckTab() {
   const [file, setFile]     = useState(null)

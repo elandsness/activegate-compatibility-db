@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { StatCard, StatusBadge, DataListItem, PanelContainer } from './shared'
-import { clearGraph } from '../api'
+import { clearGraph } from '../../api'
 
 export default function DataTab({ versions, managedVersions, relationships, hubSummary, onDataChange }) {
   const [clearing, setClearing] = useState(false)

@@ -1,7 +1,7 @@
 /* Chat tab — natural-language compatibility assistant. */
 
 import { useState, useRef } from 'react'
-import { chat } from '../api'
+import { chat } from '../../api'
 
 export default function ChatTab() {
   const [messages, setMessages]   = useState([])

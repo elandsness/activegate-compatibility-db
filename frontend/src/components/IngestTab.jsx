@@ -1,7 +1,7 @@
 /* Ingest tab — import all data and single-source ingestion. */
 
 import { useState } from 'react'
-import { ingest, downloadBlobFile } from '../api'
+import { ingest, downloadBlobFile } from '../../api'
 
 export default function IngestTab({ onDataChange }) {
   const [sources, setSources] = useState([])

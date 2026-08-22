@@ -1,7 +1,7 @@
 /* Graph tab — interactive vis.Network diagram with toolbar and detail panel. */
 
 import { useState, useEffect, useRef } from 'react'
-import { fetchGraph } from '../api'
+import { fetchGraph } from '../../api'
 
 export default function GraphTab({ versions }) {
   const containerRef = useRef(null)
@@ -112,7 +112,6 @@ export default function GraphTab({ versions }) {
               {selected.status && <div className="panel-kv"><span>Status</span><span>{selected.status}</span></div>}
               {selected.releaseDate && <div className="panel-kv"><span>Release</span><span>{selected.releaseDate}</span></div>}
             </div>
-          </p>
             <div className="panel-section">
               <strong>Compatibility:</strong>
               <div className="panel-list">
@@ -121,8 +120,8 @@ export default function GraphTab({ versions }) {
                 )) || <span style={{ color: '#888' }}>No data</span>}
               </div>
             </div>
-          </div>
-          : (selected && null) /* avoid duplicate render */}
+          </>)
+          : null}
           {!selected && !data && <p style={{ color: '#888' }}>No graph loaded yet.</p>}
           {!selected && data && <p style={{ color: '#888' }}>Click a node to see details.</p>}
         </div>
