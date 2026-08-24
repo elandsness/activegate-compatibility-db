@@ -281,6 +281,10 @@ class FactConverter:
 
             subj_val = stmt["subject_version"] or "unknown"
 
+            # Skip facts with unknown subject or subject_type
+            if subj_val == "unknown" or subject_type == "unknown":
+                continue
+
             # Keep ActiveGate subjects tied to release versions only.
             if subject_type == "activegate":
                 if FactConverter._is_activegate_version(stmt.get("subject_version")):

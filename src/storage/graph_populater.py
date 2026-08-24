@@ -398,6 +398,12 @@ class GraphPopulator:
                     f"SET ag.last_seen = datetime(), ag.is_release = true"
                 )
                 params = {"value": value}
+            elif label == "ManagedClusterVersion":
+                query = (
+                    f"MERGE (mc:ManagedClusterVersion {{{key}: $value}}) "
+                    f"SET mc.last_seen = datetime(), mc.is_release = true"
+                )
+                params = {"value": value}
             else:
                 query = (
                     f"MERGE (n:{label} {{{key}: $value}}) SET n.last_seen = datetime()"
