@@ -15,6 +15,7 @@ from src.reasoning.citation_generator import QueryProcessor
 from src.reasoning.compatibility_reasoner import CompatibilityReasoner
 from src.storage.connection_manager import make_manager_for_app
 from src.storage.graph_populater import GraphPopulator
+from src.storage.graph_query import GraphQuery
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

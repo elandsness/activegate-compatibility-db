@@ -1,7 +1,8 @@
 /* Graph tab — interactive vis.Network diagram with toolbar and detail panel. */
 
 import { useState, useEffect, useRef } from 'react'
-import { fetchGraph } from '../../api'
+import { Network } from 'vis-network'
+import { fetchGraph } from '../api'
 
 export default function GraphTab({ versions }) {
   const containerRef = useRef(null)
@@ -34,29 +35,21 @@ export default function GraphTab({ versions }) {
   // vis-network init
   useEffect(() => {
     if (!data || !containerRef.current) return
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js'
-    script.onload = () => {
-      try {
-        // vis is global after load
-        const { Network, DataStore, DataView } = window.vis ?? {}
-        if (!Network) return
-        const nodes = new DataStore(data.nodes.map(n => ({ ...n, id: String(n.id), label: n.label, title: n.title })))
-        const edges = new DataStore(data.edges.map(e => ({ ...e, id: String(e.id) })))
-        const net = new Network(containerRef.current, { nodes, edges }, {
-          interaction: { zoomView: true, dragView: true, dragNodes: true },
-          physics: { enabled: true, barnesHut: { centralGravity: 0.1, springLength: 100 } },
-          layout: { improvedLayout: true },
-        })
-        net.on('click', params => {
-          const nodeId = params.nodes[0]
-          if (nodeId) setSelected(data.nodes.find(n => String(n.id) === String(nodeId)))
-        })
-        networkRef.current = net
-      } catch (e) { console.error('vis-network error:', e) }
-    }
-    document.head.appendChild(script)
-    return () => { networkRef.current?.destroy(); script.remove() }
+    try {
+      const visNodes = data.nodes.map(n => ({ ...n, id: String(n.id), label: n.label, title: n.title }))
+      const visEdges = data.edges.map(e => ({ ...e, id: String(e.id) }))
+      const net = new Network(containerRef.current, { nodes: visNodes, edges: visEdges }, {
+        interaction: { zoomView: true, dragView: true, dragNodes: true },
+        physics: { enabled: true, barnesHut: { centralGravity: 0.1, springLength: 100 } },
+        layout: { improvedLayout: true },
+      })
+      net.on('click', params => {
+        const nodeId = params.nodes[0]
+        if (nodeId) setSelected(data.nodes.find(n => String(n.id) === String(nodeId)))
+      })
+      networkRef.current = net
+    } catch (e) { console.error('vis-network error:', e) }
+    return () => { networkRef.current?.destroy() }
   }, [data])
 
   // Filter nodes by text

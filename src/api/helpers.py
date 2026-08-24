@@ -22,11 +22,27 @@ def make_graph_connection():
     return mgr
 
 
-def process_documents_with_nlp(documents: List[Dict]) -> Dict:
+def process_documents_with_nlp(documents: List[Dict], graph_populator=None) -> Dict:
     """Process documents via NLP pipeline and persist extracted facts."""
+    from src.storage.graph_populater import GraphPopulator
+
     nlp = NLPPipeline()
     facts_extracted = 0
+    facts_stored = 0
     processed_docs = []
+
+    pop = graph_populator or GraphPopulator()
+
+    # Connect to Neo4j if not already connected
+    if not pop.graph_conn or not pop.graph_conn.is_connected:
+        if pop.graph_conn:
+            pop.graph_conn.connect()
+        else:
+            # Create a new connection manager and connect
+            from src.storage.connection_manager import get_manager
+            mgr = get_manager()
+            mgr.connect()
+            pop.graph_conn = mgr
 
     for doc in documents:
         content = doc.get("content", "")
@@ -46,19 +62,29 @@ def process_documents_with_nlp(documents: List[Dict]) -> Dict:
         doc_facts = len(facts)
         facts_extracted += doc_facts
 
-        # Persist via the GraphPopulator passed in by the caller
-        # (we avoid importing it here to prevent circular deps)
+        # Persist facts to Neo4j
+        if facts and pop and pop.graph_conn and pop.graph_conn.is_connected:
+            stored = pop.populate_from_facts(facts)
+            facts_stored += stored
+            logger.info("Stored %d facts for document %s", stored, doc.get("title", "Unknown"))
+        elif not pop:
+            logger.warning("No graph_populator provided")
+        elif not pop.graph_conn:
+            logger.warning("graph_populator has no graph_conn")
+        elif not pop.graph_conn.is_connected:
+            logger.warning("graph_populator connected=%s", pop.graph_conn.is_connected)
+
         processed_docs.append({
             "title": doc.get("title", "Unknown"),
             "url": doc.get("url", ""),
             "content_length": len(content),
             "facts_extracted": doc_facts,
-            "facts_stored": doc_facts,
+            "facts_stored": facts_stored,
             "compatibility_statements": len(result.compatibility_statements),
             "version_pairs": len(result.version_pairs),
         })
 
-    return {"facts_extracted": facts_extracted, "documents": processed_docs}
+    return {"facts_extracted": facts_extracted, "facts_stored": facts_stored, "documents": processed_docs}
 
 
 def extract_release_version_from_url(url: str) -> str:

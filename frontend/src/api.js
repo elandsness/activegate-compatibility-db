@@ -36,8 +36,14 @@ export async function chat (message, context = {}) {
 }
 
 export async function ingest (source, extraUrl) {
-  const payload = { source }
-  if (source === 'url' && extraUrl) payload.url = extraUrl
+  // Map frontend source names to API source names
+  const sourceMap = {
+    'managed-versions': 'managed',
+    'relationships': 'managed', // relationships are derived, not ingested separately
+  }
+  const apiSource = sourceMap[source] || source
+  const payload = { source: apiSource }
+  if (apiSource === 'url' && extraUrl) payload.url = extraUrl
   const res = await fetch(`${API}/ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
   return parseApiResponse(res)
 }

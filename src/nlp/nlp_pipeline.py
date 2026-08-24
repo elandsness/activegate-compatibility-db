@@ -235,6 +235,32 @@ class FactConverter:
 
         # Convert compatibility statements to facts
         for stmt in extraction_result.compatibility_statements:
+            # Check if this is an "Oldest supported versions" statement
+            if FactConverter._is_oldest_supported_context(stmt, extraction_result):
+                # Create a "supported_version" fact instead
+                subject_version = stmt.get("subject_version")
+                if subject_version and FactConverter._is_activegate_version(subject_version):
+                    fact = ExtractedFact(
+                        fact_type="supported_version",
+                        subject=str(subject_version).strip(),
+                        predicate="IS_SUPPORTED",
+                        object_val=None,
+                        confidence=float(stmt.get("confidence", 0.85)),
+                        source_url=extraction_result.source_url,
+                        source_text=stmt["raw_text"],
+                        subject_type="activegate",
+                        object_type="activegate",
+                    )
+                    facts.append(fact)
+                continue
+
+            # Check if this is a feature compatibility statement (e.g., "Chromium 150 is now supported by ActiveGate")
+            if FactConverter._is_feature_compatibility(stmt):
+                fact = FactConverter._convert_feature_compatibility(stmt, extraction_result)
+                if fact:
+                    facts.append(fact)
+                continue
+
             fact_type = "compatibility_statement"
             subject_type = stmt.get(
                 "subject_component", stmt.get("component", "unknown")
@@ -442,3 +468,100 @@ class FactConverter:
             },
         }
         return mapping.get(statement_type, {}).get(object_type, statement_type.upper())
+
+    @staticmethod
+    def _is_oldest_supported_context(stmt: Dict, extraction_result: ExtractionResult) -> bool:
+        """Check if a statement is from an 'Oldest supported versions' section."""
+        raw_text = stmt.get("raw_text", "")
+        if "oldest supported" in raw_text.lower():
+            return True
+        # Check if the statement has activegate subject with no related version
+        if (
+            stmt.get("subject_component") == "activegate"
+            and not stmt.get("related_version")
+            and stmt.get("type") == "compatible"
+        ):
+            # Check if the source context mentions "oldest supported"
+            source_text = extraction_result.source_title or extraction_result.source_url
+            if "oldest supported" in source_text.lower():
+                return True
+        return False
+
+    @staticmethod
+    def _is_feature_compatibility(stmt: Dict) -> bool:
+        """Check if a statement is a feature compatibility statement (e.g., "Chromium 150 is now supported by ActiveGate")."""
+        raw_text = stmt.get("raw_text", "").lower()
+        # Check for patterns like "Chromium X is now supported by" or "Chrome for Testing X is now supported by"
+        if "chromium" in raw_text or "chrome for testing" in raw_text:
+            if "is now supported by" in raw_text or "is supported by" in raw_text:
+                return True
+        return False
+
+    @staticmethod
+    def _convert_feature_compatibility(stmt: Dict, extraction_result: ExtractionResult) -> Optional[ExtractedFact]:
+        """Convert a feature compatibility statement to a fact.
+
+        Example: "Chromium 150 is now supported by Synthetic-enabled ActiveGate"
+        Creates: ActiveGate 1.335 -[SUPPORTS_FEATURE]-> Chromium 150
+        """
+        raw_text = stmt.get("raw_text", "")
+        subject_version = stmt.get("subject_version")
+
+        # Extract the feature version (e.g., "150" from "Chromium 150")
+        feature_match = re.search(r"(?:Chrome(?:mium)?\s+for\s+Testing|\sChrome|\sChromium)\s+(\d+(?:\.\d+)*)", raw_text, re.IGNORECASE)
+        if not feature_match:
+            feature_match = re.search(r"(\d+(?:\.\d+)*)\s+is\s+now\s+supported\s+by", raw_text, re.IGNORECASE)
+        if not feature_match:
+            return None
+
+        feature_version = feature_match.group(1)
+        feature_name = "Chromium" if "chromium" in raw_text.lower() else "Chrome for Testing"
+
+        # Extract the ActiveGate version from source metadata
+        ag_version = FactConverter._extract_activegate_version(
+            extraction_result.source_title, extraction_result.source_url
+        )
+        if not ag_version:
+            return None
+
+        # Determine the object type based on the feature
+        if "chrome" in raw_text.lower() and "ubuntu" in raw_text.lower() or "linux" in raw_text.lower():
+            object_type = "os"
+            # Extract OS versions from the statement
+            os_match = re.search(r"installed on:\s*([^\n]+)", raw_text, re.IGNORECASE)
+            if os_match:
+                os_versions = [v.strip() for v in os_match.group(1).split(",") if v.strip()]
+                if os_versions:
+                    # Create separate facts for each OS
+                    facts = []
+                    for os_ver in os_versions:
+                        fact = ExtractedFact(
+                            fact_type="compatibility_statement",
+                            subject=ag_version,
+                            predicate="SUPPORTED_BY",
+                            object_val=f"{feature_name} {feature_version} on {os_ver}",
+                            confidence=float(stmt.get("confidence", 0.8)),
+                            source_url=extraction_result.source_url,
+                            source_text=raw_text,
+                            subject_type="activegate",
+                            object_type="os",
+                        )
+                        facts.append(fact)
+                    return facts[0] if len(facts) == 1 else None  # Return first fact for now
+            else:
+                object_type = "feature"
+        else:
+            object_type = "feature"
+
+        fact = ExtractedFact(
+            fact_type="feature_compatibility",
+            subject=ag_version,
+            predicate="SUPPORTS_FEATURE",
+            object_val=f"{feature_name} {feature_version}",
+            confidence=float(stmt.get("confidence", 0.8)),
+            source_url=extraction_result.source_url,
+            source_text=raw_text,
+            subject_type="activegate",
+            object_type=object_type,
+        )
+        return fact

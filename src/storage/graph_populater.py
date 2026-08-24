@@ -121,11 +121,85 @@ class GraphPopulator:
                 return self._insert_compatibility_statement(fact)
             elif fact.fact_type == "upgrade_path":
                 return self._insert_upgrade_path(fact)
+            elif fact.fact_type == "supported_version":
+                return self._insert_supported_version(fact)
+            elif fact.fact_type == "feature_compatibility":
+                return self._insert_feature_compatibility(fact)
             else:
                 logger.warning(f"Unknown fact type: {fact.fact_type}")
                 return False
         except Exception as e:
             logger.error(f"Error inserting fact: {e}")
+            return False
+
+    def _insert_feature_compatibility(self, fact: ExtractedFact) -> bool:
+        """Insert a feature compatibility fact (e.g., ActiveGate supports Chromium 150)."""
+        if not self.graph_conn.driver:
+            if not self.graph_conn.connect():
+                logger.error("Failed to connect to Neo4j: cannot insert feature compatibility")
+                return False
+
+        # Ensure ActiveGate node exists
+        self._ensure_node("ActiveGateVersion", "version", fact.subject)
+
+        # Create a FeatureVersion node
+        feature_name, feature_version = self._parse_feature_name(fact.object)
+        if not feature_name or not feature_version:
+            logger.warning(f"Could not parse feature name/version from: {fact.object}")
+            return False
+
+        feature_node_id = f"{feature_name} {feature_version}"
+
+        query = """
+        MERGE (f:FeatureVersion {name: $feature_name, version: $feature_version})
+        SET f.last_seen = datetime()
+        WITH f
+        MATCH (ag:ActiveGateVersion {version: $ag_version})
+        MERGE (ag)-[r:SUPPORTS_FEATURE]->(f)
+        SET r.confidence = $confidence,
+            r.source_url = $source_url,
+            r.last_seen = datetime()
+        RETURN r
+        """
+        try:
+            self.graph_conn.execute(query, {
+                "feature_name": feature_name,
+                "feature_version": feature_version,
+                "ag_version": fact.subject,
+                "confidence": fact.confidence,
+                "source_url": fact.source_url,
+            })
+            return True
+        except Exception as e:
+            logger.error(f"Error inserting feature compatibility: {e}")
+            return False
+
+    def _parse_feature_name(self, feature_str: str) -> tuple:
+        """Parse feature name and version from a string like 'Chromium 150' or 'Chrome for Testing 150'."""
+        match = re.match(r"^(Chrome(?:ium)?\s+for\s+Testing|Chrome|Chromium)\s+(\d+(?:\.\d+)*)$", feature_str, re.IGNORECASE)
+        if match:
+            return match.group(1).strip(), match.group(2)
+        return None, None
+
+    def _insert_supported_version(self, fact: ExtractedFact) -> bool:
+        """Mark an ActiveGate version as supported."""
+        if not self.graph_conn.driver:
+            if not self.graph_conn.connect():
+                logger.error("Failed to connect to Neo4j: cannot mark supported version")
+                return False
+
+        query = """
+        MERGE (ag:ActiveGateVersion {version: $version})
+        SET ag.is_release = true,
+            ag.support_status = 'SUPPORTED',
+            ag.last_seen = datetime()
+        RETURN ag
+        """
+        try:
+            self.graph_conn.execute(query, {"version": fact.subject})
+            return True
+        except Exception as e:
+            logger.error(f"Error marking supported version: {e}")
             return False
 
     def _insert_compatibility_statement(self, fact: ExtractedFact) -> bool:
@@ -318,6 +392,12 @@ class GraphPopulator:
                     "os_name": os_properties["os_name"],
                     "version": os_properties["version"],
                 }
+            elif label == "ActiveGateVersion":
+                query = (
+                    f"MERGE (ag:ActiveGateVersion {{{key}: $value}}) "
+                    f"SET ag.last_seen = datetime(), ag.is_release = true"
+                )
+                params = {"value": value}
             else:
                 query = (
                     f"MERGE (n:{label} {{{key}: $value}}) SET n.last_seen = datetime()"

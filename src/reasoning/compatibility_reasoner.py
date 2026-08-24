@@ -133,9 +133,14 @@ class CompatibilityReasoner:
             f"Compatibility check: {current_version} -> {target_version}",
             correlation_id=getattr(self, "_correlation_id", ""),
         )
+        # Convert extensions to tuple for hashability (lru_cache requires hashable args)
+        extensions_hashable = tuple(
+            tuple(sorted(ext.items())) if isinstance(ext, dict) else ext
+            for ext in (extensions or [])
+        )
         return self._cached_check(  # type: ignore[no-any-return]
             current_version, target_version, os_family, os_version,
-            managed_cluster_version, extensions, use_graph,
+            managed_cluster_version, extensions_hashable, use_graph,
         )
 
     def clear_cache(self) -> None:

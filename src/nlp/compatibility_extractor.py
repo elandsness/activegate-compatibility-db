@@ -26,6 +26,8 @@ class CompatibilityExtractor:
             r"(?:compatible\s+with|supports?|works\s+with|runs\s+on)(?:\s+[A-Za-z0-9]+){0,8}?\s*(?:version\s+)?(\d+\.\d+(?:\.\d+)*)",
             r"(\d+\.\d+(?:\.\d+)*)\s+(?:is\s+)?compatible\s+with(?:\s+[A-Za-z0-9]+){0,8}?\s*(?:version\s+)?(\d+\.\d+(?:\.\d+)*)",
             r"ActiveGate\s*(\d+\.\d+(?:\.\d+)*)\s+supports\s+(?:Dynatrace\s+)?Managed\s+cluster(?:\s+versions?)?\s+(?:from|starting\s+at|at)\s+(?:version\s+)?(\d+\.\d+(?:\.\d+)*)",
+            r"(\d+\.\d+(?:\.\d+)*)\s+is\s+now\s+supported\s+by\s+(?:Dynatrace\s+)?ActiveGate",
+            r"(?:Chrome|Chromium|Chrome\s+for\s+Testing)\s+(\d+(?:\.\d+)*)\s+is\s+now\s+supported\s+by\s+(?:Synthetic-enabled\s+)?ActiveGate",
         ],
         "incompatible": [
             r"(?:incompatible|not\s+compatible|does\s+not\s+work|cannot\s+run)(?:\s+with\s+|on\s+)?(?:[A-Za-z0-9]+){0,8}?\s*(?:version\s+)?(\d+\.\d+(?:\.\d+)*)",
@@ -43,8 +45,17 @@ class CompatibilityExtractor:
         ],
         "end_of_support": [
             r"(?:end(?:\s+of\s+)?(?:\s+support)?|EOL|no\s+longer\s+supported).*?(?:version\s+)?(\d+\.\d+(?:\.\d+)*)",
+            r"Oldest\s+supported\s+versions?\s*(?:.*?)(\d+\.\d+(?:\.\d+)*)",
+            r"With this release, the following are the oldest supported ActiveGate versions.*?(\d+\.\d+(?:\.\d+)*)",
         ],
     }
+
+    # Pattern to extract "Oldest supported versions" section
+    OLDEST_SUPPORTED_PATTERN = re.compile(
+        r"Oldest\s+supported\s+versions?\s*(?:.*?)"
+        r"(?:Standard\s+Support\s+)?(\d+\.\d+(?:\.\d+)*)",
+        re.DOTALL | re.IGNORECASE,
+    )
 
     # Patterns to identify component types
     COMPONENT_PATTERNS = {
@@ -65,6 +76,35 @@ class CompatibilityExtractor:
         statements = []
         seen_signatures = set()
 
+        # 1. Extract "Oldest supported versions" section
+        oldest_stmts = self._extract_oldest_supported(text)
+        for stmt in oldest_stmts:
+            signature = (
+                stmt.statement_type,
+                stmt.subject_version,
+                stmt.related_version,
+                stmt.subject_component,
+                stmt.object_component,
+            )
+            if signature not in seen_signatures:
+                seen_signatures.add(signature)
+                statements.append(stmt)
+
+        # 2. Extract structured "X is now supported by" statements
+        supported_by_stmts = self._extract_supported_by(text)
+        for stmt in supported_by_stmts:
+            signature = (
+                stmt.statement_type,
+                stmt.subject_version,
+                stmt.related_version,
+                stmt.subject_component,
+                stmt.object_component,
+            )
+            if signature not in seen_signatures:
+                seen_signatures.add(signature)
+                statements.append(stmt)
+
+        # 3. Run the general regex patterns
         for stmt_type, patterns in self.compatibility_patterns.items():
             for pattern in patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -123,6 +163,109 @@ class CompatibilityExtractor:
                         context_end=context_end,
                     )
                     statements.append(statement)
+
+        return statements
+
+    def _extract_oldest_supported(self, text: str) -> List[CompatibilityStatement]:
+        """Extract 'Oldest supported versions' section as compatibility statements.
+
+        The section looks like:
+            Oldest supported versions
+            With this release, the following are the oldest supported ActiveGate versions.
+            Support level    Oldest supported version
+            Standard Support    1.325
+            Enterprise Success and Support    1.319
+        """
+        statements = []
+
+        # Find all "Oldest supported versions" sections
+        # Pattern: "Oldest supported versions" followed by version pairs
+        section_pattern = re.compile(
+            r"Oldest\s+supported\s+versions?\s*\n?.*?"
+            r"(Standard\s+Support\s+)?(\d+\.\d+(?:\.\d+)*)",
+            re.DOTALL | re.IGNORECASE,
+        )
+
+        for section_match in section_pattern.finditer(text):
+            # Extract the section context (header + all version pairs)
+            context_start = section_match.start()
+            # Find the end of the section (next major heading or end of text)
+            remaining_text = text[context_start:]
+            # Look for the next section header (## or ###)
+            next_section = re.search(r"\n#{1,3}\s+\S", remaining_text)
+            if next_section:
+                context_end = context_start + next_section.start()
+            else:
+                context_end = min(len(text), context_start + 1000)
+
+            context = text[context_start:context_end]
+
+            # Extract all version pairs from the section
+            # Pattern: "Standard Support    1.325" or "Enterprise Success and Support    1.319"
+            version_pattern = re.compile(
+                r"(Standard\s+Support|Enterprise\s+Success\s+and\s+Support)\s+(\d+\.\d+(?:\.\d+)*)",
+                re.IGNORECASE,
+            )
+            versions_in_section = version_pattern.findall(context)
+
+            if not versions_in_section:
+                # Fallback: try to extract any version after "Oldest supported"
+                fallback_pattern = re.compile(
+                    r"Oldest\s+supported\s+versions?\s*\n?.*?(\d+\.\d+(?:\.\d+)*)",
+                    re.DOTALL | re.IGNORECASE,
+                )
+                fallback_match = fallback_pattern.search(context)
+                if fallback_match:
+                    versions_in_section = [(None, fallback_match.group(1))]
+                else:
+                    continue
+
+            for support_level, version in versions_in_section:
+                stmt = CompatibilityStatement(
+                    statement_type="compatible",
+                    subject_version=version,
+                    related_version=None,
+                    component="activegate",
+                    subject_component="activegate",
+                    object_component="activegate",
+                    confidence=0.85,
+                    raw_text=section_match.group(0),
+                    context_start=context_start,
+                    context_end=context_end,
+                )
+                statements.append(stmt)
+
+        return statements
+
+    def _extract_supported_by(self, text: str) -> List[CompatibilityStatement]:
+        """Extract 'X is now supported by ActiveGate' statements."""
+        statements = []
+        patterns = [
+            # "Chromium 150 is now supported by Synthetic-enabled ActiveGate"
+            r"(?:Chrome|Chromium|Chrome\s+for\s+Testing)\s+(\d+(?:\.\d+)*)\s+is\s+now\s+supported\s+by\s+(?:Synthetic-enabled\s+)?ActiveGate",
+            # "X is now supported by ActiveGate"
+            r"(\d+(?:\.\d+)*)\s+is\s+now\s+supported\s+by\s+(?:Synthetic-enabled\s+)?ActiveGate",
+            # "ActiveGate X supports Y"
+            r"ActiveGate\s+(\d+\.\d+(?:\.\d+)*)\s+supports\s+(\d+(?:\.\d+)*)",
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                version = match.group(1)
+                context_start = max(0, match.start() - 100)
+                context_end = min(len(text), match.end() + 100)
+                stmt = CompatibilityStatement(
+                    statement_type="compatible",
+                    subject_version=version,
+                    related_version=None,
+                    component="activegate",
+                    subject_component="activegate",
+                    object_component="os" if "chrome" in match.group(0).lower() else "activegate",
+                    confidence=0.8,
+                    raw_text=match.group(0),
+                    context_start=context_start,
+                    context_end=context_end,
+                )
+                statements.append(stmt)
 
         return statements
 

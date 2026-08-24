@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { fetchData as loadAllData } from './api'
-import { IngestTab }     from './components/IngestTab'
-import { ChatTab }       from './components/ChatTab'
-import { BatchCheckTab } from './components/BatchCheckTab'
-import { DataTab }       from './components/DataTab'
-import { GraphTab }      from './components/GraphTab'
+import IngestTab         from './components/IngestTab'
+import ChatTab           from './components/ChatTab'
+import BatchCheckTab     from './components/BatchCheckTab'
+import DataTab           from './components/DataTab'
+import GraphTab          from './components/GraphTab'
 
 const TABS = [
   ['ingest', '📥 Ingest Data'],

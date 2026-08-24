@@ -36,4 +36,4 @@ class IngestRateLimiter:
 
 
 # Singleton — imported by routes/ingestion.py
-_ingest_limiter = IngestRateLimiter(min_interval_seconds=30.0)
+_ingest_limiter = IngestRateLimiter(min_interval_seconds=2.0)

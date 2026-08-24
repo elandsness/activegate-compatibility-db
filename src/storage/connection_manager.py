@@ -23,8 +23,10 @@ import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Generator, Optional
 
+from flask import Flask, current_app
+
 if TYPE_CHECKING:
-    from flask import Flask
+    pass
 
 try:
     from neo4j import Driver, GraphDatabase  # type: ignore[import-untyped]
@@ -51,26 +53,29 @@ def get_manager() -> "ConnectionManager":
 
 def make_manager_for_app(app: Flask) -> "ConnectionManager":
     """Create an app-scoped manager and hook it to the shutdown lifecycle."""
-    mgr = ConnectionManager(
-        uri=os.environ.get("NEO4J_URI", ""),
-        user=os.environ.get("NEO4J_USER", "neo4j"),
-        password=os.environ.get("NEO4J_PASSWORD", ""),
-        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
-    )
+    # Use the singleton if it exists, otherwise create a new one
+    mgr = get_manager()
+
+    # Initialize with env vars if this is a new instance
+    if not mgr._uri:
+        mgr._uri = os.environ.get("NEO4J_URI", "")
+        mgr._user = os.environ.get("NEO4J_USER", "neo4j")
+        mgr._password = os.environ.get("NEO4J_PASSWORD", "")
+        mgr._database = os.environ.get("NEO4J_DATABASE", "neo4j")
+
     app.extensions["neo4j_manager"] = mgr  # type: ignore[attr-defined]
     app.teardown_appcontext(_shutdown_mgr)
     return mgr
 
 
 def _shutdown_mgr(exc: Optional[BaseException]) -> None:
-    """Called at end of each request cycle."""
-    mgr = None  # pyright: ignore[reportPossiblyUnboundVariable]
-    try:
-        mgr = Flask.current_app.extensions.get("neo4j_manager")  # type: ignore[attr-defined]
-    except RuntimeError:
-        pass
-    if mgr is not None:
-        mgr.disconnect()
+    """Called at end of each request cycle.
+
+    NOTE: We deliberately do NOT disconnect the shared singleton manager here.
+    The connection is process-scoped and will be cleaned up when the process exits.
+    Disconnecting per-request breaks subsequent requests that need the connection.
+    """
+    pass
 
 
 # ── ConnectionManager --------------------------------------------------------
@@ -104,9 +109,13 @@ class ConnectionManager:
 
     def connect(self, timeout_s: int = 10) -> bool:
         """Establish the underlying driver. Returns True on success."""
-        if not self._uri or not GraphDatabase:
-            logger.info("Neo4j disabled: no URI or neo4j package missing")
+        if not self._uri:
+            logger.warning("Neo4j disabled: no URI configured")
             return False
+        if not GraphDatabase:
+            logger.warning("Neo4j disabled: neo4j package not installed")
+            return False
+        logger.info("Connecting to Neo4j at %s (user=%s)", self._uri, self._user)
         try:
             self._driver = GraphDatabase.driver(
                 self._uri, auth=(self._user, self._password), max_connection_lifetime=timeout_s
@@ -116,7 +125,7 @@ class ConnectionManager:
             logger.info("Connected to Neo4j at %s", self._uri)
             return True
         except Exception as exc:
-            logger.error("Neo4j connect failed: %s", exc)
+            logger.error("Neo4j connect failed: %s", exc, exc_info=True)
             return False
 
     def disconnect(self) -> None:

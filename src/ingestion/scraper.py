@@ -217,41 +217,14 @@ class ReleaseNotesScraper:
                 # Get text and clean it up
                 text = content_div.get_text(separator="\n", strip=True)
 
-                # Remove excessive whitespace and short lines
+                # Remove excessive whitespace but keep all lines (including version numbers in tables)
                 lines = [
                     line.strip()
                     for line in text.split("\n")
-                    if line.strip() and len(line.strip()) > 10
+                    if line.strip() and len(line.strip()) > 3  # Reduced minimum length to keep version numbers
                 ]
 
-                # Look for sections that mention compatibility, versions, etc.
-                relevant_lines = []
-                for line in lines:
-                    line_lower = line.lower()
-                    if any(
-                        keyword in line_lower
-                        for keyword in [
-                            "activegate",
-                            "version",
-                            "compatible",
-                            "requires",
-                            "support",
-                            "managed",
-                            "cluster",
-                            "extension",
-                            "os",
-                            "linux",
-                            "windows",
-                        ]
-                    ):
-                        relevant_lines.append(line)
-
-                # If we found relevant lines, use them; otherwise use all lines
-                final_lines = (
-                    relevant_lines if relevant_lines else lines[:50]
-                )  # Limit if no relevant content
-
-                result = "\n".join(final_lines)
+                result = "\n".join(lines)
                 logger.info(f"Extracted {len(result)} characters from {url}")
                 return result
 

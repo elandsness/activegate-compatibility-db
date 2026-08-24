@@ -1,25 +1,21 @@
 /* Ingest tab — import all data and single-source ingestion. */
 
 import { useState } from 'react'
-import { ingest, downloadBlobFile } from '../../api'
+import { ingest, downloadBlobFile } from '../api'
 
 export default function IngestTab({ onDataChange }) {
-  const [sources, setSources] = useState([])
   const [error, setError]      = useState('')
   const [loading, setLoading]  = useState(false)
   const [progress, setProgress]= useState(null)
 
   const handleIngestAll = async () => {
-    setError(''); setProgress({ step: null, pct: 0 })
+    setError(''); setProgress({ step: 'Ingesting all sources...', pct: 0 })
     try {
       setLoading(true)
-      for (const source of sources) {
-        setProgress({ step: `Ingesting ${source}`, pct: Math.round(sources.indexOf(source) / sources.length * 100) })
-        const result = await ingest(source)
-        if (result.error || result.status !== 'OK') setError(result.error || result.message || 'Ingest failed')
-      }
-      setProgress({ step: 'Complete', pct: 100 })
-      onDataChange()
+      const result = await ingest('all')
+      if (result.error) setError(result.error)
+      setProgress({ step: result.status === 'success' ? 'Complete' : 'Failed', pct: 100 })
+      if (result.status === 'success') onDataChange()
     } catch (e) { setError(e.message); setProgress(null) }
     setLoading(false)
   }
@@ -29,7 +25,7 @@ export default function IngestTab({ onDataChange }) {
     try {
       setLoading(true)
       const result = await ingest(source, extraUrl)
-      if (result.error || result.status !== 'OK') setError(result.error || result.message || 'Ingest failed')
+      if (result.error) setError(result.error)
       else setProgress({ step: `${source} done`, pct: 100 })
     } catch (e) { setError(e.message); setProgress(null) }
     setLoading(false)
@@ -43,14 +39,10 @@ export default function IngestTab({ onDataChange }) {
       {/* Import All */}
       <div className="ingest-form" style={{ marginBottom: 24 }}>
         <label style={{ color: '#ccc', fontWeight: 'bold' }}>Import all data (releases, managed, relationships, hub)</label>
-        <select className="form-select" size={5} multiple style={{ width: '100%', height: 80, background: '#1a1a2e', color: '#eee', border: 'none', borderRadius: 8, padding: 10, marginTop: 10, marginBottom: 10 }}
-                value={sources} onChange={e => setSources(Array.from(e.target.selectedOptions, o => o.value))}>
-          <option value="releases">Releases (versions & support status)</option>
-          <option value="managed-versions">Managed Versions</option>
-          <option value="relationships">Relationships (upgrade paths)</option>
-          <option value="hub">Dynatrace Hub Data</option>
-        </select>
-        <button onClick={handleIngestAll} disabled={sources.length === 0 || loading}>Import All</button>
+        <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: 10 }}>Scrapes and ingests all available data sources.</p>
+        <button onClick={handleIngestAll} disabled={loading}>
+          {loading ? 'Importing...' : 'Import All Data'}
+        </button>
         {progress && <ProgressBar active={progress.step !== 'Complete'} label={progress.step} />}
       </div>
 
