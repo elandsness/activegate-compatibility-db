@@ -134,6 +134,21 @@ class ConnectionManager:
             self._driver = None
             logger.info("Disconnected from Neo4j")
 
+    def clear_database(self) -> bool:
+        """Clear all data from the Neo4j database."""
+        if not self._driver:
+            logger.warning("Cannot clear database: not connected")
+            return False
+
+        try:
+            # Delete all nodes and relationships
+            self.query("MATCH (n) DETACH DELETE n")
+            logger.info("Database cleared successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing database: {e}")
+            return False
+
     # -- session helpers ----------------------------------------------------
 
     @contextmanager
